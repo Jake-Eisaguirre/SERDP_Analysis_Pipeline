@@ -69,11 +69,15 @@ clean_prev <- raw_prev %>%
   drop_na(bd_swab_id) %>% 
   mutate(infected = case_when(bd_load >1 ~ 1,
                               is.na(bd_load) ~ 0),
-         year = year(date)) %>% 
-  group_by(species_capture, year) %>% 
+         year = year(date),
+         month = month(date)) %>% 
+  group_by(species_capture, year, month) %>% 
   mutate(n_infected = sum(infected),
          n = n(),
-         prevalence = n_infected/n)
+         prevalence = n_infected/n) %>% 
+  ungroup() %>% 
+  group_by(month, species_capture) %>% 
+  summarise(average_prev = mean(prevalence))
 
 ```
 
