@@ -91,7 +91,7 @@ plot(clean_prev$month, clean_prev$average_prev)
 
     </div>
 
-## GAM Model `average_prev ~ s(month)` per species
+## GAM Model `average_prev ~ s(month)` per species - PRACTICE ON ONE SPECIES
 
 ### Questions:
 
@@ -147,9 +147,67 @@ concurvity(bull_gam, full = T)
 
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
 ```{r}
-species_list <- 
+species_list <- unique(clean_prev$species_capture)
 
+plots <- list()
+
+model_outputs <- list()
+
+spec_names <- c()
+
+for (i in 1:length(species_list)) {
+  
+  k <- clean_prev %>% 
+    filter(species_capture == species_list[i]) %>% 
+    select(month) %>% 
+    unique() %>% 
+    nrow()
+  
+  
+  if (k > 2) {
+    
+ spec_names[i] <- species_list[i]
+  
+  dat <- clean_prev %>% 
+  select(species_capture, month, average_prev) %>% 
+  filter(species_capture == species_list[i]) %>%  
+  ungroup() %>% 
+  select(!species_capture)
+  
+  gam <- gam(average_prev ~ s(month, k = k), data = dat) 
+  
+  model_outputs[i] <- gam 
+  
+  p <- plotGAM(gam, smooth.cov = 'month') +
+               theme_classic() +
+               geom_point(data = dat, aes(x=month, y = average_prev), alpha = 0.08, pch = 1) +
+               ggtitle(paste(species_list[i]))
+  
+  plots[[i]] <- p
+    
+  
+  }
+  
+  print(paste("done with", species_list[i]))
+  
+  # Add species names to model outputs
+  names(model_outputs) <- c(spec_names)
+
+}
+
+```
+
+## Examine plots
+```{r}
+
+
+plots[1:length(plots)]
 
 
 ```
 
+## Examine Model Outputs - Still working on this
+```{r}
+
+summary(1:length(model_outputs))
+```
