@@ -56,7 +56,7 @@ q <- "select r.region, s.site, v.date, v.survey_time,
      join capture c on s2.survey_id = c.survey_id 
      full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_id
      where r.region = 'pennsylvania'
-     and v.date < '2017-12-31';"
+     and v.date < '2020-12-31';"
 
 raw_prev <- dbGetQuery(connection, q)
 
@@ -72,7 +72,9 @@ clean_prev <- raw_prev %>%
   select(site, date, species_capture, bd_load) %>% 
   mutate(infected = case_when(bd_load >1 ~ 1,
                               is.na(bd_load) ~ 0),
-         month = month(date)) %>% 
+         month = month(date),
+         year = year(date)) %>%
+  #unite(year_month, c("year", "month"), sep = "-") %>% 
   group_by(site, species_capture, date) %>% 
   mutate(n_infected = sum(infected),
          n = n(),
@@ -198,12 +200,12 @@ summary(lithobates_catesbeianus)
 # Bullfrog test
 
 bull_dat <- clean_prev %>% 
-  select(species_capture, month, average_prev) %>% 
+  select(species_capture, average_prev, month) %>% 
   filter(species_capture == "lithobates_catesbeianus") %>% 
   ungroup() %>% 
   select(!species_capture)
 
-bull_gam <- gam(average_prev ~ s(month, k = 7), data = bull_dat)
+bull_gam <- gam(average_prev ~ s(year_month, k =50), data = bull_dat)
 
 summary(bull_gam)
 
