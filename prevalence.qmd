@@ -1,0 +1,79 @@
+---
+title: "bd_prevalence_GAM"
+format: html
+editor: visual
+---
+
+## Load Packages
+
+```{r}
+#| output: false
+if (!require(librarian)){
+  install.packages("librarian")
+  library(librarian)
+}
+
+librarian::shelf(tidyverse, RPostgres, DBI, unmarked, here, lubridate, kableExtra, GGally, MuMIn, AHMbook, AICcmodavg)
+
+```
+
+## Connect to `survey_data` schema in `ribbitr` database
+
+```{r}
+#| output: false
+tryCatch({
+    drv <- dbDriver("Postgres")
+    print("Connecting to Database…")
+    connection <- dbConnect(drv,
+                 dbname = Sys.getenv("aws_dbname"),
+                 host = Sys.getenv("aws_host"),
+                 port = Sys.getenv("aws_port"),
+                 user = Sys.getenv("aws_user"),
+                 password = Sys.getenv("aws_password"),
+                 timezone=NULL)
+    print("Database Connected!")
+    },
+    error=function(cond) {
+            print("Unable to connect to Database.")
+    })
+
+#search path
+dbExecute(connection, "set search_path to survey_data")
+
+```
+
+## Query SERDP Bd data - Prevelance 
+```{r}
+
+q <- "select r.region, s.site, v.date, v.survey_time,
+     s2.detection_type, c.species_capture, sb.bd_swab_id,
+     sb.bd_load
+     from region r
+     join site s on r.region_id = s.region_id 
+     join visit v on s.site_id = v.site_id 
+     join survey s2 on v.visit_id = s2.visit_id
+     join capture c on s2.survey_id = c.survey_id 
+     full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_id
+     where r.region = 'pennsylvania'
+     and v.date < '2017-12-31';"
+
+raw_prev <- dbGetQuery(connection, q)
+
+```
+
+## Clean data and add prevalance 
+```{r}
+
+clean_prev <- raw_prev %>% 
+  drop_na(species_capture) %>%
+  drop_na(bd_swab_id) %>% 
+  mutate(infected = case_when(bd_load >1 ~ 1,
+                              is.na(bd_load) ~ 0),
+         year = year(date)) %>% 
+  group_by(species_capture, year) %>% 
+  mutate(n_infected = sum(infected),
+         n = n(),
+         prevalence = n_infected/n)
+
+```
+
