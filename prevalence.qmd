@@ -13,7 +13,7 @@ if (!require(librarian)){
   library(librarian)
 }
 
-librarian::shelf(tidyverse, RPostgres, DBI, unmarked, here, lubridate, kableExtra, GGally, MuMIn, AHMbook, AICcmodavg)
+librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel)
 
 ```
 
@@ -42,7 +42,8 @@ dbExecute(connection, "set search_path to survey_data")
 
 ```
 
-## Query SERDP Bd data - Prevelance 
+## Query SERDP Bd data - Prevelance
+
 ```{r}
 
 q <- "select r.region, s.site, v.date, v.survey_time,
@@ -61,7 +62,9 @@ raw_prev <- dbGetQuery(connection, q)
 
 ```
 
-## Clean data and add prevalance 
+## Clean data and add prevalance
+
+
 ```{r}
 
 clean_prev <- raw_prev %>% 
@@ -69,15 +72,84 @@ clean_prev <- raw_prev %>%
   drop_na(bd_swab_id) %>% 
   mutate(infected = case_when(bd_load >1 ~ 1,
                               is.na(bd_load) ~ 0),
-         year = year(date),
          month = month(date)) %>% 
-  group_by(species_capture, year, month) %>% 
+  group_by(site, species_capture, date) %>% 
   mutate(n_infected = sum(infected),
          n = n(),
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
-  group_by(month, species_capture) %>% 
-  summarise(average_prev = mean(prevalence))
+  group_by(site, species_capture, month) %>% 
+  mutate(average_prev = mean(prevalence)) %>% 
+  ungroup()
+
+
+
+# not much general trend across time
+plot(clean_prev$month, clean_prev$average_prev)
+
+```
+
+    </div>
+
+## GAM Model `average_prev ~ s(month)` per species
+
+### Questions:
+
+-   k is basis function which is what? how many time intervals? Amount a function is ran over the data?
+
+-   How to set k? Always choose max interval?
+
+-   How to choose sp?
+
+-   What is the transformation applied to y axis?
+
+-   Do we only want to examine trend with time/month? Do we want to add other predictors? (multivariate?)
+
+-   What `method` do we choose? `GCV.Cp`?
+
+-   How do I read the significant results section?
+
+-   Concurvity check does what?
+
+```{r}
+# Bullfrog test
+
+bull_dat <- clean_prev %>% 
+  select(species_capture, month, average_prev) %>% 
+  filter(species_capture == "lithobates_catesbeianus") %>% 
+  ungroup() %>% 
+  select(!species_capture)
+
+bull_gam <- gam(average_prev ~ s(month, k = 7), data = bull_dat)
+
+summary(bull_gam)
+
+plot(bull_gam, residuals = TRUE, pch = 1)
+
+coef(bull_gam)
+
+bull_gam$sp
+
+plot(bull_gam, shade = T, shade.col = "lightgreen",
+     shift = coef(bull_gam)[1], seWithMean = T)
+
+
+plotGAM(bull_gam, smooth.cov = 'month') +
+  theme_classic() +
+  geom_point(data = bull_dat, aes(x=month, y = average_prev), alpha = 0.08, pch = 1) 
+
+gam.check(bull_gam)
+
+concurvity(bull_gam, full = T)
+
+```
+
+
+## Now create loop to run GAM for each species `average_prev ~ s(month)`
+```{r}
+species_list <- 
+
+
 
 ```
 
