@@ -64,12 +64,12 @@ raw_prev <- dbGetQuery(connection, q)
 
 ## Clean data and add prevalance
 
-
 ```{r}
 
 clean_prev <- raw_prev %>% 
   drop_na(species_capture) %>%
   drop_na(bd_swab_id) %>% 
+  select(site, date, species_capture, bd_load) %>% 
   mutate(infected = case_when(bd_load >1 ~ 1,
                               is.na(bd_load) ~ 0),
          month = month(date)) %>% 
@@ -89,7 +89,90 @@ plot(clean_prev$month, clean_prev$average_prev)
 
 ```
 
-    </div>
+
+## Now create loop to run GAM for each species `average_prev ~ s(month)`
+```{r}
+# Create empty objects
+species_list <- unique(clean_prev$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_prev %>% 
+    filter(species_capture == species_list[i]) %>% 
+    select(month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>2
+  if (k > 2) {
+  
+      # add filter species list with k>2 - 3 species have too little data    
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>2
+      dat <- clean_prev %>% 
+        select(species_capture, month, average_prev) %>% 
+        filter(species_capture == species_list[i]) %>%  
+        ungroup() %>% 
+        select(!species_capture)
+  
+      # run GAM per species
+      gam <- gam(average_prev ~ s(month, k = k), data = dat) 
+      
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+      
+      # make GAM plot
+      p <- plotGAM(gam, smooth.cov = 'month') +
+           theme_classic() +
+           geom_point(data = dat, aes(x=month, y = average_prev), alpha = 0.08, pch = 1) +
+           ggtitle(paste(species_list[i]))
+    
+    # save GAM plot in list
+     plots[[i]] <- p
+    
+  
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+
+```
+
+## Examine plots
+```{r}
+
+
+plots[1:length(plots)]
+
+
+```
+
+## Examine Model Outputs - Still working on this
+### Print all GAM model outputs
+```{r}
+
+ClassFilter <- function(x) inherits(get(x), 'gam' )
+
+Objs <- Filter( ClassFilter, ls() )
+
+print(Objs)
+
+```
+
+### Select which GAM model to view
+```{r}
+summary(lithobates_catesbeianus)
+```
+
 
 ## GAM Model `average_prev ~ s(month)` per species - PRACTICE ON ONE SPECIES
 
@@ -142,72 +225,4 @@ gam.check(bull_gam)
 
 concurvity(bull_gam, full = T)
 
-```
-
-
-## Now create loop to run GAM for each species `average_prev ~ s(month)`
-```{r}
-species_list <- unique(clean_prev$species_capture)
-
-plots <- list()
-
-model_outputs <- list()
-
-spec_names <- c()
-
-for (i in 1:length(species_list)) {
-  
-  k <- clean_prev %>% 
-    filter(species_capture == species_list[i]) %>% 
-    select(month) %>% 
-    unique() %>% 
-    nrow()
-  
-  
-  if (k > 2) {
-    
- spec_names[i] <- species_list[i]
-  
-  dat <- clean_prev %>% 
-  select(species_capture, month, average_prev) %>% 
-  filter(species_capture == species_list[i]) %>%  
-  ungroup() %>% 
-  select(!species_capture)
-  
-  gam <- gam(average_prev ~ s(month, k = k), data = dat) 
-  
-  model_outputs[i] <- gam 
-  
-  p <- plotGAM(gam, smooth.cov = 'month') +
-               theme_classic() +
-               geom_point(data = dat, aes(x=month, y = average_prev), alpha = 0.08, pch = 1) +
-               ggtitle(paste(species_list[i]))
-  
-  plots[[i]] <- p
-    
-  
-  }
-  
-  print(paste("done with", species_list[i]))
-  
-  # Add species names to model outputs
-  names(model_outputs) <- c(spec_names)
-
-}
-
-```
-
-## Examine plots
-```{r}
-
-
-plots[1:length(plots)]
-
-
-```
-
-## Examine Model Outputs - Still working on this
-```{r}
-
-summary(1:length(model_outputs))
 ```
