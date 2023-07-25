@@ -13,7 +13,7 @@ if (!require(librarian)){
   library(librarian)
 }
 
-librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel)
+librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel, scales, anytime)
 
 ```
 
@@ -62,7 +62,9 @@ raw_prev <- dbGetQuery(connection, q)
 
 ```
 
-## Clean data and add prevalance
+# Mean Annual Seasonal Trend
+
+## Clean data and add prevalence
 
 ```{r}
 
@@ -74,25 +76,24 @@ clean_prev <- raw_prev %>%
                               is.na(bd_load) ~ 0),
          month = month(date),
          year = year(date)) %>%
-  #unite(year_month, c("year", "month"), sep = "-") %>% 
   group_by(site, species_capture, date) %>% 
   mutate(n_infected = sum(infected),
          n = n(),
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
-  group_by(site, species_capture, month) %>% 
+  group_by(site, species_capture, month) %>%
   mutate(average_prev = mean(prevalence)) %>% 
   ungroup()
+                                                  
 
 
-
-# not much general trend across time
+# not much general trend across time - Maybe slight negative trend through time
 plot(clean_prev$month, clean_prev$average_prev)
 
 ```
 
-
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
+
 ```{r}
 # Create empty objects
 species_list <- unique(clean_prev$species_capture)
@@ -114,7 +115,7 @@ for (i in 1:length(species_list)) {
   # only run models for species with k>2
   if (k > 2) {
   
-      # add filter species list with k>2 - 3 species have too little data    
+      # add filter species list with k>2   
       spec_names[i] <- species_list[i]
       
       # filter clean data set for species list of k>2
@@ -150,6 +151,7 @@ for (i in 1:length(species_list)) {
 ```
 
 ## Examine plots
+
 ```{r}
 
 
@@ -159,7 +161,9 @@ plots[1:length(plots)]
 ```
 
 ## Examine Model Outputs - Still working on this
+
 ### Print all GAM model outputs
+
 ```{r}
 
 ClassFilter <- function(x) inherits(get(x), 'gam' )
@@ -171,10 +175,140 @@ print(Objs)
 ```
 
 ### Select which GAM model to view
+
 ```{r}
+# Choose species from above list
 summary(lithobates_catesbeianus)
 ```
 
+# Multi Annual Seasonal Trend
+
+## Clean data and add prevalence
+
+```{r}
+
+clean_prev <- raw_prev %>% 
+  drop_na(species_capture) %>%
+  drop_na(bd_swab_id) %>% 
+  select(site, date, species_capture, bd_load) %>% 
+  mutate(infected = case_when(bd_load >1 ~ 1,
+                              is.na(bd_load) ~ 0),
+         month = month(date),
+         year = year(date)) %>%
+  unite(year_month, c("year", "month"), sep = "-") %>% 
+  group_by(site, species_capture, date) %>% 
+  mutate(n_infected = sum(infected),
+         n = n(),
+         prevalence = n_infected/n) %>% 
+  ungroup() %>% 
+  group_by(site, species_capture, year_month) %>% 
+  mutate(average_prev = mean(prevalence)) %>% 
+  ungroup()
+
+
+
+# not much general trend across time - Maybe slight negative trend through time
+plot(clean_prev$month_year, clean_prev$average_prev)
+
+```
+
+## Now create loop to run GAM for each species `average_prev ~ s(month)`
+
+```{r}
+# Create empty objects
+species_list <- unique(clean_prev$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_prev %>% 
+    filter(species_capture == species_list[i]) %>%
+    mutate(year_month = as_date(year_month, format = "%Y-%m"),
+           year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
+           year_month = sort(year_month)) %>%  
+    select(year_month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>8
+  if (k > 8) {
+  
+      # add filter species list with k>8 - 4 species have too little data    
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>8
+      dat <- clean_prev %>% 
+        select(species_capture, year_month, average_prev) %>% 
+        filter(species_capture == species_list[i]) %>%  
+        ungroup() %>% 
+        select(!species_capture) %>% 
+        mutate(unix = as_date(year_month, format = "%Y-%m"),
+               unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
+               unix = sort(unix)) 
+
+  
+      # run GAM per species
+      gam <- gam(average_prev ~ s(unix), data = dat) 
+      
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+      
+      # make GAM plot
+      p <- plotGAM(gam, smooth.cov = 'unix') +
+           theme_classic() +
+           geom_point(data = dat, aes(x=unix, y = average_prev), alpha = 0.08, pch = 1) +
+           ggtitle(paste(species_list[i]))
+    
+    # save GAM plot in list
+     plots[[i]] <- p
+    
+  
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+
+```
+
+## Examine plots
+
+```{r}
+
+
+plots[1:length(plots)]
+
+
+```
+
+## Examine Model Outputs - Still working on this
+
+### Print all GAM model outputs
+
+```{r}
+
+ClassFilter <- function(x) inherits(get(x), 'gam' )
+
+Objs <- Filter( ClassFilter, ls() )
+
+print(Objs)
+
+```
+
+### Select which GAM model to view
+
+```{r}
+# Choose species from above list
+summary(notophthalmus_viridescens)
+```
+
+# Practice
 
 ## GAM Model `average_prev ~ s(month)` per species - PRACTICE ON ONE SPECIES
 
@@ -190,6 +324,8 @@ summary(lithobates_catesbeianus)
 
 -   Do we only want to examine trend with time/month? Do we want to add other predictors? (multivariate?)
 
+-   How come some models predict a prevalence greater then 1 and less then 0 even with logit link?! (Very confused)
+
 -   What `method` do we choose? `GCV.Cp`?
 
 -   How do I read the significant results section?
@@ -200,12 +336,15 @@ summary(lithobates_catesbeianus)
 # Bullfrog test
 
 bull_dat <- clean_prev %>% 
-  select(species_capture, average_prev, month) %>% 
+  select(species_capture, average_prev, year_month) %>% 
   filter(species_capture == "lithobates_catesbeianus") %>% 
   ungroup() %>% 
-  select(!species_capture)
+  select(!species_capture) %>% 
+  mutate(unix = as_date(year_month, format = "%Y-%m"),
+         unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
+         unix = sort(unix))
 
-bull_gam <- gam(average_prev ~ s(year_month, k =50), data = bull_dat)
+bull_gam <- gam(average_prev ~ s(unix, k = 19), data = bull_dat, faimly=binomial(link = "logit"))
 
 summary(bull_gam)
 
@@ -218,10 +357,13 @@ bull_gam$sp
 plot(bull_gam, shade = T, shade.col = "lightgreen",
      shift = coef(bull_gam)[1], seWithMean = T)
 
+labels <- c("2017-3", "2017-4", "2017-5", "2017-6", "2017-7", "2017-8", "2017-9", "2018-4", "2018-5",  
+            "2018-6", "2018-7", "2018-8", "2018-9", "2018-10", "2019-4", "2019-5", "2019-6", "2019-7",
+            "2019-10") 
 
-plotGAM(bull_gam, smooth.cov = 'month') +
+plotGAM(bull_gam, smooth.cov = 'unix') +
   theme_classic() +
-  geom_point(data = bull_dat, aes(x=month, y = average_prev), alpha = 0.08, pch = 1) 
+  geom_point(data = bull_dat, aes(x=unix, y = average_prev), alpha = 0.08, pch = 1)
 
 gam.check(bull_gam)
 
