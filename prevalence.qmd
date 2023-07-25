@@ -62,18 +62,16 @@ raw_prev <- dbGetQuery(connection, q)
 
 ```
 
-# Mean Annual Seasonal Trend
-
 ## Clean data and add prevalence
 
 ```{r}
 
-# Mean prevalence per site, per month, per species - Does having repeated data values affect model? Summarize or mutate
+# Mean prevalence per site, per day (some sites sampled twice a month), per species
 clean_prev <- raw_prev %>% 
+  drop_na(bd_swab_id) %>%
   drop_na(species_capture) %>%
-  drop_na(bd_swab_id) %>% 
   select(site, date, species_capture, bd_load) %>% 
-  mutate(infected = case_when(bd_load >1 ~ 1,
+  mutate(infected = case_when(bd_load > 0  ~ 1,
                               is.na(bd_load) ~ 0),
          month = month(date),
          year = year(date)) %>%
@@ -82,16 +80,18 @@ clean_prev <- raw_prev %>%
          n = n(),
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
-  group_by(site, species_capture, month) %>%
+  group_by(site, species_capture, date) %>%
   summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
   ungroup()
                                                   
 
 
 # not much general trend across time - Maybe slight negative trend through time
-plot(clean_prev$month, clean_prev$average_prev)
+plot(clean_prev$date, clean_prev$average_prev)
 
 ```
+
+# Mean Annual Seasonal Trend
 
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
 
@@ -109,6 +109,7 @@ for (i in 1:length(species_list)) {
   # find species with low k value
   k <- clean_prev %>% 
     filter(species_capture == species_list[i]) %>% 
+    mutate(month = month(date)) %>% 
     select(month) %>% 
     unique() %>% 
     nrow()
@@ -121,8 +122,9 @@ for (i in 1:length(species_list)) {
       
       # filter clean data set for species list of k>2
       dat <- clean_prev %>% 
-        select(species_capture, month, average_prev) %>% 
+        select(species_capture, date, average_prev) %>% 
         filter(species_capture == species_list[i]) %>%  
+        mutate(month = month(date)) %>% 
         ungroup() %>% 
         select(!species_capture)
   
@@ -161,15 +163,15 @@ plots[1:length(plots)]
 
 ```
 
-## Examine Model Outputs - Still working on this
+## Examine Model Outputs
 
 ### Print all GAM model outputs
 
 ```{r}
 
-ClassFilter <- function(x) inherits(get(x), 'gam' )
+ClassFilter <- function(x) inherits(get(x), 'gam')
 
-Objs <- Filter( ClassFilter, ls() )
+Objs <- Filter(ClassFilter, ls())
 
 print(Objs)
 
@@ -184,32 +186,7 @@ summary(lithobates_catesbeianus)
 
 # Multi Annual Seasonal Trend
 
-## Clean data and add prevalence
-
-```{r}
-
-# Mean prevalence per site, per year-month, per species
-clean_prev <- raw_prev %>% 
-  drop_na(species_capture) %>%
-  drop_na(bd_swab_id) %>% 
-  select(site, date, species_capture, bd_load) %>% 
-  mutate(infected = case_when(bd_load >1 ~ 1,
-                              is.na(bd_load) ~ 0),
-         month = month(date),
-         year = year(date)) %>%
-  unite(year_month, c("year", "month"), sep = "-") %>% 
-  group_by(site, species_capture, date) %>% 
-  mutate(n_infected = sum(infected),
-         n = n(),
-         prevalence = n_infected/n) %>% 
-  ungroup() %>% 
-  group_by(site, species_capture, year_month) %>% 
-  summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
-  ungroup()
-
-```
-
-## Now create loop to run GAM for each species `average_prev ~ s(month)`
+## Now create loop to run GAM for each species `average_prev ~ s(unix)`
 
 ```{r}
 # Create empty objects
@@ -225,7 +202,7 @@ for (i in 1:length(species_list)) {
   # find species with low k value
   k <- clean_prev %>% 
     filter(species_capture == species_list[i]) %>%
-    mutate(year_month = as_date(year_month, format = "%Y-%m"),
+    mutate(year_month = as_date(date, format = "%Y-%m"),
            year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
            year_month = sort(year_month)) %>%  
     select(year_month) %>% 
@@ -233,18 +210,18 @@ for (i in 1:length(species_list)) {
     nrow()
   
   # only run models for species with k>8
-  if (k > 8) {
+  if (k > 9) {
   
-      # add filter species list with k>8 - 4 species have too little data    
+      # add filter species list with k>8 - 3 species have too little data    
       spec_names[i] <- species_list[i]
       
       # filter clean data set for species list of k>8
       dat <- clean_prev %>% 
-        select(species_capture, year_month, average_prev) %>% 
+        select(species_capture, date, average_prev) %>% 
         filter(species_capture == species_list[i]) %>%  
         ungroup() %>% 
         select(!species_capture) %>% 
-        mutate(unix = as_date(year_month, format = "%Y-%m"),
+        mutate(unix = as_date(date, format = "%Y-%m"),
                unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
                unix = sort(unix)) 
 
@@ -286,15 +263,15 @@ plots[1:length(plots)]
 
 ```
 
-## Examine Model Outputs - Still working on this
+## Examine Model Outputs
 
 ### Print all GAM model outputs
 
 ```{r}
 
-ClassFilter <- function(x) inherits(get(x), 'gam' )
+ClassFilter <- function(x) inherits(get(x), 'gam')
 
-Objs <- Filter( ClassFilter, ls() )
+Objs <- Filter(ClassFilter, ls())
 
 print(Objs)
 
