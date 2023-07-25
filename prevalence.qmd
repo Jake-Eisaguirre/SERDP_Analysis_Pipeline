@@ -83,7 +83,7 @@ clean_prev <- raw_prev %>%
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
   group_by(site, species_capture, month) %>%
-  summarise(average_prev = mean(prevalence)) %>% 
+  summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
   ungroup()
                                                   
 
@@ -204,7 +204,7 @@ clean_prev <- raw_prev %>%
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
   group_by(site, species_capture, year_month) %>% 
-  summarise(average_prev = mean(prevalence)) %>% 
+  summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
   ungroup()
 
 ```
