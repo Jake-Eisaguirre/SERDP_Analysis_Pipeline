@@ -68,6 +68,7 @@ raw_prev <- dbGetQuery(connection, q)
 
 ```{r}
 
+# Mean prevalence per site, per month, per species - Does having repeated data values affect model? Summarize or mutate
 clean_prev <- raw_prev %>% 
   drop_na(species_capture) %>%
   drop_na(bd_swab_id) %>% 
@@ -82,7 +83,7 @@ clean_prev <- raw_prev %>%
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
   group_by(site, species_capture, month) %>%
-  mutate(average_prev = mean(prevalence)) %>% 
+  summarise(average_prev = mean(prevalence)) %>% 
   ungroup()
                                                   
 
@@ -126,7 +127,7 @@ for (i in 1:length(species_list)) {
         select(!species_capture)
   
       # run GAM per species
-      gam <- gam(average_prev ~ s(month, k = k), data = dat) 
+      gam <- gam(average_prev ~ s(month, k = k), data = dat, faimly = binomial(link = "logit")) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
@@ -134,7 +135,7 @@ for (i in 1:length(species_list)) {
       # make GAM plot
       p <- plotGAM(gam, smooth.cov = 'month') +
            theme_classic() +
-           geom_point(data = dat, aes(x=month, y = average_prev), alpha = 0.08, pch = 1) +
+           geom_point(data = dat, aes(x=month, y = average_prev), pch = 1) +
            ggtitle(paste(species_list[i]))
     
     # save GAM plot in list
@@ -187,6 +188,7 @@ summary(lithobates_catesbeianus)
 
 ```{r}
 
+# Mean prevalence per site, per year-month, per species
 clean_prev <- raw_prev %>% 
   drop_na(species_capture) %>%
   drop_na(bd_swab_id) %>% 
@@ -202,13 +204,8 @@ clean_prev <- raw_prev %>%
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
   group_by(site, species_capture, year_month) %>% 
-  mutate(average_prev = mean(prevalence)) %>% 
+  summarise(average_prev = mean(prevalence)) %>% 
   ungroup()
-
-
-
-# not much general trend across time - Maybe slight negative trend through time
-plot(clean_prev$month_year, clean_prev$average_prev)
 
 ```
 
@@ -253,7 +250,7 @@ for (i in 1:length(species_list)) {
 
   
       # run GAM per species
-      gam <- gam(average_prev ~ s(unix), data = dat) 
+      gam <- gam(average_prev ~ s(unix), data = dat, faimly = binomial(link = "logit")) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
@@ -261,9 +258,11 @@ for (i in 1:length(species_list)) {
       # make GAM plot
       p <- plotGAM(gam, smooth.cov = 'unix') +
            theme_classic() +
-           geom_point(data = dat, aes(x=unix, y = average_prev), alpha = 0.08, pch = 1) +
+           geom_point(data = dat, aes(x=unix, y = average_prev), pch = 1) +
            ggtitle(paste(species_list[i]))
-    
+        
+        
+        
     # save GAM plot in list
      plots[[i]] <- p
     
@@ -326,6 +325,8 @@ summary(notophthalmus_viridescens)
 
 -   How come some models predict a prevalence greater then 1 and less then 0 even with logit link?! (Very confused)
 
+-   Betar or Binomial regression?
+
 -   What `method` do we choose? `GCV.Cp`?
 
 -   How do I read the significant results section?
@@ -336,7 +337,7 @@ summary(notophthalmus_viridescens)
 # Bullfrog test
 
 bull_dat <- clean_prev %>% 
-  select(species_capture, average_prev, year_month) %>% 
+  select(species_capture, average_prev, date) %>% 
   filter(species_capture == "lithobates_catesbeianus") %>% 
   ungroup() %>% 
   select(!species_capture) %>% 
@@ -344,7 +345,7 @@ bull_dat <- clean_prev %>%
          unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
          unix = sort(unix))
 
-bull_gam <- gam(average_prev ~ s(unix, k = 19), data = bull_dat, faimly=binomial(link = "logit"))
+bull_gam <- mgcv::gam(average_prev ~ s(unix, k = 19), data = bull_dat, faimly = binomial(link = "logit"))
 
 summary(bull_gam)
 
