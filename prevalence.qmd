@@ -80,7 +80,7 @@ clean_prev <- raw_prev %>%
          n = n(),
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
-  group_by(site, species_capture, date) %>%
+  group_by(site, species_capture, date) %>% # add this for offset() (n, n_infected)
   summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
   ungroup()
                                                   
@@ -93,7 +93,8 @@ plot(clean_prev$date, clean_prev$average_prev)
 
 # Mean Annual Seasonal Trend
 
--   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem?
+-   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)?
+`gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))`
 
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
 
@@ -124,14 +125,16 @@ for (i in 1:length(species_list)) {
       
       # filter clean data set for species list of k>2
       dat <- clean_prev %>% 
-        select(species_capture, date, average_prev) %>% 
+        select(species_capture, date, average_prev) %>% # (, n, n_infected) add these for offset model
         filter(species_capture == species_list[i]) %>%  
         mutate(month = month(date)) %>% 
         ungroup() %>% 
         select(!species_capture)
   
       # run GAM per species
-      gam <- gam(average_prev ~ s(month, k = k), data = dat, faimly = binomial(link = "logit")) 
+      gam <- gam(average_prev ~ s(month, k = k), data = dat, faimly = binomial(link = "logit"))  
+        
+        
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
@@ -141,6 +144,9 @@ for (i in 1:length(species_list)) {
            theme_classic() +
            geom_point(data = dat, aes(x=month, y = average_prev), pch = 1) +
            ggtitle(paste(species_list[i]))
+      
+      #offest plot
+      #p <- plot(gam, shade = T, shade.col = "lightgreen", seWithMean = T, main = paste(species_list[i]))
     
     # save GAM plot in list
      plots[[i]] <- p
@@ -341,9 +347,9 @@ labels <- c("2017-3", "2017-4", "2017-5", "2017-6", "2017-7", "2017-8", "2017-9"
             "2018-6", "2018-7", "2018-8", "2018-9", "2018-10", "2019-4", "2019-5", "2019-6", "2019-7",
             "2019-10") 
 
-plotGAM(bull_gam, smooth.cov = 'unix') +
+plotGAM(a, smooth.cov = 'month') +
   theme_classic() +
-  geom_point(data = bull_dat, aes(x=unix, y = average_prev), alpha = 0.08, pch = 1)
+  geom_point(data = a, aes(x=month, y = average_prev), alpha = 0.08, pch = 1)
 
 gam.check(bull_gam)
 
