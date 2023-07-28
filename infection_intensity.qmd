@@ -41,3 +41,234 @@ tryCatch({
 dbExecute(connection, "set search_path to survey_data")
 
 ```
+
+## Query SERDP Bd data - infection intensity `sample_bd_qty`
+
+```{r}
+
+q <- "select r.region, s.site, v.date, v.survey_time,
+     s2.detection_type, c.species_capture, sb.bd_swab_id,
+     sb.sample_bd_qty
+     from region r
+     join site s on r.region_id = s.region_id 
+     join visit v on s.site_id = v.site_id 
+     join survey s2 on v.visit_id = s2.visit_id
+     join capture c on s2.survey_id = c.survey_id 
+     full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_id
+     where r.region = 'pennsylvania'
+     and v.date < '2020-12-31';"
+
+raw_int <- dbGetQuery(connection, q)
+
+```
+
+## Clean infection intesity data
+```{r}
+
+clean_int <- raw_int %>% 
+  drop_na(species_capture) %>% 
+  drop_na(bd_swab_id) %>% 
+  mutate(sample_bd_qty = if_else(is.na(sample_bd_qty), 0, sample_bd_qty),
+         month = month(date),
+         year = year(date)) %>% 
+  rename(infection_intensity = sample_bd_qty)
+
+
+plot(clean_int$date, clean_int$infection_intensity)
+
+
+```
+
+
+# Mean Annual Seasonal Trend
+
+## Now create loop to run GAM for each species `infection_intensity ~ s(month)`
+```{r}
+
+# Create empty objects
+species_list <- unique(clean_int$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_int %>% 
+    filter(species_capture == species_list[i]) %>% 
+    mutate(month = month(date)) %>% 
+    select(month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>2
+  if (k > 2) {
+  
+      # add filter species list with k>2   
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>2
+      dat <- clean_int %>% 
+        select(species_capture, date, infection_intensity) %>%
+        filter(species_capture == species_list[i]) %>%  
+        mutate(month = month(date)) %>% 
+        ungroup() %>% 
+        select(!species_capture)
+  
+      # run GAM per species
+      gam <- gam(infection_intensity ~ s(month, k = k), data = dat, faimly = binomial(link = "logit"))  
+        
+        
+      
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+      
+      # make GAM plot
+      p <- plotGAM(gam, smooth.cov = 'month', rawOrFitted = "raw") +
+           theme_classic() +
+           ggtitle(paste(species_list[i]))
+
+    
+    # save GAM plot in list
+     plots[[i]] <- p
+    
+  
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+
+```
+## Examine plots
+
+```{r}
+
+
+plots[1:length(plots)]
+
+
+```
+# Examine Model Outputs
+
+### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
+
+```{r}
+
+ClassFilter <- function(x) inherits(get(x), 'gam')
+
+Objs <- Filter(ClassFilter, ls())
+
+print(Objs)
+
+```
+
+### Select which GAM model to view
+
+```{r}
+# Choose species from above list
+summary(lithobates_catesbeianus)
+```
+
+# Multi Annual Seasonal Trend
+
+## Now create loop to run GAM for each species `infection_intensity ~ s(unix)`
+
+```{r}
+# Create empty objects
+species_list <- unique(clean_int$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_int %>% 
+    filter(species_capture == species_list[i]) %>%
+    mutate(year_month = as_date(date, format = "%Y-%m"),
+           year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
+           year_month = sort(year_month)) %>%  
+    select(year_month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>8
+  if (k > 9) {
+  
+      # add filter species list with k>8 - 3 species have too little data    
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>8
+      dat <- clean_int %>% 
+        select(species_capture, date, infection_intensity) %>% 
+        filter(species_capture == species_list[i]) %>%  
+        ungroup() %>% 
+        select(!species_capture) %>% 
+        mutate(unix = as_date(date, format = "%Y-%m"),
+               unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
+               unix = sort(unix)) 
+
+  
+      # run GAM per species
+      gam <- gam(infection_intensity ~ s(unix), data = dat, faimly = binomial(link = "logit")) 
+      
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+      
+      # make GAM plot
+      p <- plotGAM(gam, smooth.cov = 'unix', rawOrFitted = "raw") +
+           theme_classic() +
+           ggtitle(paste(species_list[i]))+ 
+           ylim(-5500,8500)
+        
+        
+        
+    # save GAM plot in list
+     plots[[i]] <- p
+    
+  
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+
+```
+
+## Examine plots
+
+```{r}
+
+
+plots[1:length(plots)]
+
+
+```
+
+## Examine Model Outputs
+
+### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
+
+```{r}
+
+ClassFilter <- function(x) inherits(get(x), 'gam')
+
+Objs <- Filter(ClassFilter, ls())
+
+print(Objs)
+
+```
+
+### Select which GAM model to view
+
+```{r}
+# Choose species from above list
+summary(notophthalmus_viridescens)
+```

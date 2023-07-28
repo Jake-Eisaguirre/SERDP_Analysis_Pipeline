@@ -13,7 +13,7 @@ if (!require(librarian)){
   library(librarian)
 }
 
-librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel, scales, anytime)
+librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel, scales, anytime, tidymv)
 
 ```
 
@@ -80,7 +80,7 @@ clean_prev <- raw_prev %>%
          n = n(),
          prevalence = n_infected/n) %>% 
   ungroup() %>% 
-  group_by(site, species_capture, date) %>% # add this for offset() (n, n_infected)
+  group_by(site, species_capture, date, n, n_infected) %>% # add this for offset() (,n, n_infected)
   summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
   ungroup()
                                                   
@@ -88,13 +88,11 @@ clean_prev <- raw_prev %>%
 
 # not much general trend across time - Maybe slight negative trend through time
 plot(clean_prev$date, clean_prev$average_prev)
-
 ```
 
 # Mean Annual Seasonal Trend
 
--   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)?
-`gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))`
+-   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)? `gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))` <- this gives much nicer seasonnal curves
 
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
 
@@ -173,7 +171,7 @@ plots[1:length(plots)]
 
 ## Examine Model Outputs
 
-### Print all GAM model outputs
+### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
 
 ```{r}
 
@@ -273,7 +271,7 @@ plots[1:length(plots)]
 
 ## Examine Model Outputs
 
-### Print all GAM model outputs
+### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
 
 ```{r}
 
@@ -355,4 +353,14 @@ gam.check(bull_gam)
 
 concurvity(bull_gam, full = T)
 
+
+
+
+t <- clean_prev %>% 
+  filter(species_capture == "lithobates_catesbeianus") %>% 
+  mutate(month = month(date))
+
+b <- gam(n_infected ~ s(month, k = 8)+ offset(log(n)), data = t, faimly = poisson(link = "log"))
+
+plotGAM(b, smooth.cov = 'month', rawOrFitted = "raw")
 ```
