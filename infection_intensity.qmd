@@ -63,6 +63,7 @@ raw_int <- dbGetQuery(connection, q)
 ```
 
 ## Clean infection intesity data
+
 ```{r}
 
 clean_int <- raw_int %>% 
@@ -70,19 +71,20 @@ clean_int <- raw_int %>%
   drop_na(bd_swab_id) %>% 
   mutate(sample_bd_qty = if_else(is.na(sample_bd_qty), 0, sample_bd_qty),
          month = month(date),
-         year = year(date)) %>% 
-  rename(infection_intensity = sample_bd_qty)
+         year = year(date),
+         sample_bd_qty = log10(sample_bd_qty + 1)) %>% 
+  rename(log10_bd= sample_bd_qty)
 
 
-plot(clean_int$date, clean_int$infection_intensity)
+plot(clean_int$date, clean_int$log10_bd)
 
 
 ```
 
-
 # Mean Annual Seasonal Trend
 
 ## Now create loop to run GAM for each species `infection_intensity ~ s(month)`
+
 ```{r}
 
 # Create empty objects
@@ -111,14 +113,14 @@ for (i in 1:length(species_list)) {
       
       # filter clean data set for species list of k>2
       dat <- clean_int %>% 
-        select(species_capture, date, infection_intensity) %>%
+        select(species_capture, date, log10_bd) %>%
         filter(species_capture == species_list[i]) %>%  
         mutate(month = month(date)) %>% 
         ungroup() %>% 
         select(!species_capture)
   
       # run GAM per species
-      gam <- gam(infection_intensity ~ s(month, k = k), data = dat, faimly = binomial(link = "logit"))  
+      gam <- gam(log10_bd ~ s(month, k = k), data = dat, faimly = binomial(link = "logit"))  
         
         
       
@@ -143,6 +145,7 @@ for (i in 1:length(species_list)) {
 }
 
 ```
+
 ## Examine plots
 
 ```{r}
@@ -152,6 +155,7 @@ plots[1:length(plots)]
 
 
 ```
+
 # Examine Model Outputs
 
 ### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
@@ -206,7 +210,7 @@ for (i in 1:length(species_list)) {
       
       # filter clean data set for species list of k>8
       dat <- clean_int %>% 
-        select(species_capture, date, infection_intensity) %>% 
+        select(species_capture, date, log10_bd) %>% 
         filter(species_capture == species_list[i]) %>%  
         ungroup() %>% 
         select(!species_capture) %>% 
@@ -216,7 +220,7 @@ for (i in 1:length(species_list)) {
 
   
       # run GAM per species
-      gam <- gam(infection_intensity ~ s(unix), data = dat, faimly = binomial(link = "logit")) 
+      gam <- gam(log10_bd ~ s(unix), data = dat, faimly = binomial(link = "logit")) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
@@ -224,8 +228,7 @@ for (i in 1:length(species_list)) {
       # make GAM plot
       p <- plotGAM(gam, smooth.cov = 'unix', rawOrFitted = "raw") +
            theme_classic() +
-           ggtitle(paste(species_list[i]))+ 
-           ylim(-5500,8500)
+           ggtitle(paste(species_list[i]))v
         
         
         
