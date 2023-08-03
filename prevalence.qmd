@@ -63,7 +63,7 @@ raw_prev <- dbGetQuery(connection, q)
 ```
 
 ## Clean data and add prevalence
-
+### are each survey day independent? Meaning should we summarize per month per site or leave multiple prevelance estimates per month per site?
 ```{r}
 
 # Mean prevalence per site, per day (some sites sampled twice a month), per species
@@ -92,7 +92,8 @@ plot(clean_prev$date, clean_prev$average_prev)
 
 # Mean Annual Seasonal Trend
 
--   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)? `gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))` \<- this gives much nicer seasonnal curves
+-   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)? 
+`gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))` <- this gives much nicer seasonal curves.
 
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
 
