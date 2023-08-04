@@ -1,0 +1,132 @@
+---
+title: "abundance"
+format: html
+editor: visual
+---
+
+## Load Packages
+
+```{r}
+#| output: false
+if (!require(librarian)){
+  install.packages("librarian")
+  library(librarian)
+}
+
+librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, unmarked)
+
+```
+
+## Connect to `survey_data` schema in `ribbitr` database
+
+```{r}
+#| output: false
+tryCatch({
+    drv <- dbDriver("Postgres")
+    print("Connecting to Database…")
+    connection <- dbConnect(drv,
+                 dbname = Sys.getenv("aws_dbname"),
+                 host = Sys.getenv("aws_host"),
+                 port = Sys.getenv("aws_port"),
+                 user = Sys.getenv("aws_user"),
+                 password = Sys.getenv("aws_password"),
+                 timezone=NULL)
+    print("Database Connected!")
+    },
+    error=function(cond) {
+            print("Unable to connect to Database.")
+    })
+
+#search path
+dbExecute(connection, "set search_path to survey_data")
+
+```
+
+## Query SERDP Bd data - abundance
+
+How do we want to handle day and night surveys?
+
+```{r}
+
+q_c <- "select r.region, s.site, v.date, v.survey_time,
+     s2.detection_type, c.species_capture
+     from region r
+     join site s on r.region_id = s.region_id 
+     join visit v on s.site_id = v.site_id 
+     join survey s2 on v.visit_id = s2.visit_id
+     join capture c on s2.survey_id = c.survey_id 
+     where r.region = 'pennsylvania'
+     and v.date < '2020-12-31';"
+
+raw_cap <- dbGetQuery(connection, q_c)
+
+
+q_v <- "select r.region, s.site, v.date
+        from region r
+        join site s on r.region_id = s.region_id 
+        join visit v on s.site_id = v.site_id 
+        where r.region = 'pennsylvania'
+        and v.date < '2020-12-31'"
+
+raw_visits <- dbGetQuery(connection, q_v) %>% 
+  select(!region)
+
+visits_per_site <- raw_visits %>% 
+  mutate(year = year(date)) %>% 
+  group_by(site) %>% 
+  summarise(n = n())
+```
+
+## Summarize Data
+```{r}
+
+cleaned_up_cap <- raw_cap %>% 
+  drop_na(species_capture) %>% 
+  group_by(site, date, species_capture) %>% 
+  summarise(n = n())
+
+
+```
+
+## Populate Site Zeros
+```{r}
+
+pop_zeros <- raw_visits %>% 
+  left_join(cleaned_up_cap) %>% 
+  complete(nesting(date, site),
+           species_capture = unique(cleaned_up_cap$species_capture),
+           fill = list(n = 0))
+
+```
+
+## practice
+```{r}
+
+bull <- pop_zeros %>% 
+  filter(species_capture == "lithobates_catesbeianus") %>% 
+  # mutate(year = year(date),
+  #        site = paste(year, site, sep = "_")) %>% 
+  group_by(site) %>% 
+  mutate(n_visit = match(date, unique(date)),
+         n_visit = paste0("visit_", n_visit, sep = "")) %>% 
+  group_by(site, date) %>% 
+  unique() %>% 
+  ungroup() %>%
+  select(!c(date)) %>% 
+  pivot_wider(names_from = c("n_visit"), values_from = c("n")) %>% 
+  select(!c(site, species_capture))
+
+bull_umf <- unmarkedFramePCount(y = bull)
+
+fm1_bull <- pcount( ~1  ~1, 
+               data = bull_umf, 
+               engine = "R",
+               control=list(trace=T, REPORT=5))
+
+summary(fm1_rha_3)
+
+backTransform(fm1_rha_3, "state")
+backTransform(fm1_rha_3, "det")
+
+```
+
