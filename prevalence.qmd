@@ -13,7 +13,7 @@ if (!require(librarian)){
   library(librarian)
 }
 
-librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel, scales, anytime, tidymv)
+librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, mgcv, voxel, scales, anytime, tidymv, data.table)
 
 ```
 
@@ -30,6 +30,33 @@ tryCatch({
                  port = Sys.getenv("aws_port"),
                  user = Sys.getenv("aws_user"),
                  password = Sys.getenv("aws_password"),
+                 timezone=NULL)
+    print("Database Connected!")
+    },
+    error=function(cond) {
+            print("Unable to connect to Database.")
+    })
+
+#search path
+dbExecute(connection, "set search_path to survey_data")
+
+```
+
+```{r}
+#| output: false
+library(yaml)
+
+dbaccess = yaml.load_file("/Users/mqwilber/Repos/panama_amphibian_recovery/code/dbaccess.yml")
+
+tryCatch({
+    drv <- dbDriver("Postgres")
+    print("Connecting to Database…")
+    connection <- dbConnect(drv,
+                 dbname = dbaccess$aws_dbname,
+                 host = dbaccess$aws_host,
+                 port = dbaccess$aws_port,
+                 user = dbaccess$aws_user,
+                 password = dbaccess$aws_password,
                  timezone=NULL)
     print("Database Connected!")
     },
@@ -63,7 +90,12 @@ raw_prev <- dbGetQuery(connection, q)
 ```
 
 ## Clean data and add prevalence
+
 ### are each survey day independent? Meaning should we summarize per month per site or leave multiple prevelance estimates per month per site?
+
+**Mark here**: Summarizing by month makes sense.
+As I mention below, we will actually want to keep the the 0 and 1's in their raw form when we perform the analysis.
+
 ```{r}
 
 # Mean prevalence per site, per day (some sites sampled twice a month), per species
@@ -83,8 +115,22 @@ clean_prev <- raw_prev %>%
   group_by(site, species_capture, date, n, n_infected) %>% # add this for offset() (,n, n_infected)
   summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
   ungroup()
-                                                  
 
+
+# Mark here: Here is another option for cleaning where we don't do any grouping. 
+# This is what we will want for the GAM
+clean_prev2 <- raw_prev %>% 
+  drop_na(bd_swab_id) %>%
+  drop_na(species_capture) %>%
+  select(site, date, species_capture, bd_load) %>% 
+  mutate(infected = case_when(bd_load > 0  ~ 1,
+                              is.na(bd_load) ~ 0),
+         month = month(date),
+         year = year(date))
+
+# View data
+data.table(clean_prev2)
+                                                  
 
 # not much general trend across time - Maybe slight negative trend through time
 plot(clean_prev$date, clean_prev$average_prev)
@@ -92,8 +138,8 @@ plot(clean_prev$date, clean_prev$average_prev)
 
 # Mean Annual Seasonal Trend
 
--   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)? 
-`gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))` <- this gives much nicer seasonal curves.
+-   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)? `gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))` \<- this gives much nicer seasonal curves.
+-   **Mark here**: Good question. We can actually run the GAM directly on the 0 to 1 data and you don't have to convert to prevalence first. Though, converting to prevalence is nice for seeing the general trends through time. By just using the 0 and 1 data, we automatically account for any type of offset (see code below)
 
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
 
@@ -131,7 +177,7 @@ for (i in 1:length(species_list)) {
         select(!species_capture)
   
       # run GAM per species
-      gam <- gam(average_prev ~ s(month, k = k), data = dat, faimly = binomial(link = "logit"))  
+      gam <- gam(average_prev ~ s(month, k = k), data = dat, family = binomial(link = "logit"))  
         
         
       
@@ -151,6 +197,71 @@ for (i in 1:length(species_list)) {
      plots[[i]] <- p
     
   
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+
+```
+
+**Mark here**: Alternative fitting where we keep 0 and 1 in the original form and don't convert to average prevalence
+
+```{r}
+# Create empty objects
+species_list <- unique(clean_prev2$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_prev2 %>% 
+    filter(species_capture == species_list[i]) %>% 
+    mutate(month = month(date)) %>% 
+    select(month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>2
+  if (k > 2) {
+  
+      # add filter species list with k>2   
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>2
+      dat <- clean_prev2 %>% 
+        select(species_capture, date, infected) %>% # (, n, n_infected) add these for offset model
+        filter(species_capture == species_list[i]) %>%  
+        mutate(month = month(date))
+  
+      # run GAM per species
+      gam <- gam(infected ~ s(month, k = k), data = dat, family = binomial(link = "logit"))  
+        
+        
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+
+      months = seq(min(dat$month), max(dat$month), len=50)
+      newdata = data.frame(month=months)
+      gam_pred = predict(gam, newdata=newdata, type="response")
+      newdata$pred = gam_pred
+
+      average_prev = data.table(dat)[, .(prev=mean(infected)), by=.(month)] 
+
+      # make GAM plot
+      p <- ggplot(newdata) + geom_line(aes(x=month, y=pred)) +
+                             geom_point(data=average_prev, aes(x=month, y=prev), size=5) +
+                             xlab("Month") + ylab("Probability of infection") + theme_classic() +
+                             ylim(c(0, 1)) + ggtitle(species_list[i])
+      
+    # save GAM plot in list
+     plots[[i]] <- p
+    
   }
   
   # Error checking during loop
@@ -260,6 +371,81 @@ for (i in 1:length(species_list)) {
 
 ```
 
+**Mark here**: Adjusting to just use the 0 and 1 data
+
+```{r}
+# Create empty objects
+species_list <- unique(clean_prev2$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_prev2 %>% 
+    filter(species_capture == species_list[i]) %>%
+    mutate(year_month = as_date(date, format = "%Y-%m"),
+           year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
+           year_month = sort(year_month)) %>%  
+    select(year_month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>8
+  if (k > 9) {
+  
+      # add filter species list with k>8 - 3 species have too little data    
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>8
+      dat <- clean_prev2 %>% 
+        select(species_capture, date, infected) %>% 
+        filter(species_capture == species_list[i]) %>%  
+        ungroup() %>% 
+        select(!species_capture) %>% 
+        mutate(unix = as_date(date, format = "%Y-%m"),
+               unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
+               unix = sort(unix)) 
+
+      # run GAM per species
+      gam <- gam(infected ~ s(unix), data = dat, family = binomial(link = "logit")) 
+      
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+      
+      # Predictions
+      unix = seq(min(dat$unix), max(dat$unix), len=100)
+      newdata = data.frame(unix=unix)
+      gam_pred = predict(gam, newdata=newdata, type="response")
+      newdata$pred = gam_pred
+      
+      # Average prevalence for plotting
+      dat = data.table(dat)
+      dat[, c("month", "year"):=.(month(date), year(date))]
+      average_prev = dat[, .(prev=mean(infected), mean_unix=mean(unix)), by=.(month, year)] 
+
+      # make GAM plot
+      p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
+                             geom_point(data=average_prev, aes(x=mean_unix, y=prev), size=5) +
+                             xlab("Month") + ylab("Probability of infection") + theme_classic() +
+                             ylim(c(0, 1)) + ggtitle(species_list[i])
+        
+        
+    # save GAM plot in list
+     plots[[i]] <- p
+    
+  
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+```
+
 ## Examine plots
 
 ```{r}
@@ -297,25 +483,60 @@ summary(notophthalmus_viridescens)
 
 ### Questions:
 
--   k is basis function which is what? how many time intervals? Amount a function is ran over the data?
+-   k is basis function which is what?
+    how many time intervals?
+    Amount a function is ran over the data?
 
--   How to set k? Always choose max interval?
+    -   **Mark here**: $k$ essentially describes how many parameters our regression model will have.
+        The more parameters, the more flexibility to fit the data (which can also lead to over fitting).
+
+-   How to set k?
+    Always choose max interval?
+
+    -   **Mark here**: By default, the GAM function `s()` uses a *thin-plate regression spline* that regularizes/penalizes the spline so it is not too wiggly.
+        Thus, you want to ensure $k$ is large so you have the flexibility that you need to fit the data, and then the this plate regression will penalize away the extra complexity.
 
 -   How to choose sp?
 
+    -   **Mark here**: What sp are you referring to?
+
 -   What is the transformation applied to y axis?
 
--   Do we only want to examine trend with time/month? Do we want to add other predictors? (multivariate?)
+    -   **Mark here**: See my code above.
+        With family `binomial("logit")` the predictions are made on the log odds (logit) scale.
+        If you want predictions on the *response* scale (i.e., in terms of probabilities, you just need to tell the `predict` function that this is what you want.
 
--   How come some models predict a prevalence greater then 1 and less then 0 even with logit link?! (Very confused)
+-   Do we only want to examine trend with time/month?
+    Do we want to add other predictors?
+    (multivariate?)
+
+    -   **Mark here**: As a first pass, the time trend is really all we need.
+
+-   How come some models predict a prevalence greater then 1 and less then 0 even with logit link?!
+    (Very confused)
+
+    -   **Mark here**: Two reasons.
+        First, you had a bug where you wrote "famliy" instead of "family" so the model was actually fitting a gaussian.
+        Second, we want to fit the model to the 0 and 1 data not the average infection data.
 
 -   Betar or Binomial regression?
 
--   What `method` do we choose? `GCV.Cp`?
+    -   **Mark here**: Binomial regression is what we want.
+
+-   What `method` do we choose?
+    `GCV.Cp`?
+
+    -   **Mark here**: `GCV.Cp` is a good one to use
 
 -   How do I read the significant results section?
 
+    -   **Mark here**: The significance section is essentially asking "Does the spline term improve the fit relative to the model without the spline term?".
+        If you have a significant spline term then, yes, the model with the spline term does a better job describing the data than a model without the spline term.
+
 -   Concurvity check does what?
+
+    -   **Mark here**: We don't have to worry about this with just one smooth term in the model.
+        It is essentially testing for a type of collinearity -- are multiple smooth terms describing the same variation?
 
 ```{r}
 # Bullfrog test
