@@ -54,7 +54,7 @@ q <- "select r.region, s.site, v.date, v.survey_time,
      join visit v on s.site_id = v.site_id 
      join survey s2 on v.visit_id = s2.visit_id
      join capture c on s2.survey_id = c.survey_id 
-     full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_id
+     full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_ids
      where r.region = 'pennsylvania'
      and v.date < '2020-12-31';"
 

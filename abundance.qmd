@@ -78,6 +78,7 @@ visits_per_site <- raw_visits %>%
 ```
 
 ## Summarize Data
+
 ```{r}
 
 cleaned_up_cap <- raw_cap %>% 
@@ -89,6 +90,7 @@ cleaned_up_cap <- raw_cap %>%
 ```
 
 ## Populate Site Zeros
+
 ```{r}
 
 pop_zeros <- raw_visits %>% 
@@ -100,21 +102,32 @@ pop_zeros <- raw_visits %>%
 ```
 
 ## practice
+
+### yearly mean seasonal abundance estimates per site_year.
+
+IE: tuttle_pond_2017, visit_1 = average count month 1 (march), visit_2 = average count month 2 (april), etc
+
 ```{r}
 
 bull <- pop_zeros %>% 
   filter(species_capture == "lithobates_catesbeianus") %>% 
-  # mutate(year = year(date),
-  #        site = paste(year, site, sep = "_")) %>% 
+  mutate(year = year(date),
+         site = paste(year, site, sep = "_"),
+         month = month(date)) %>%
+  group_by(month, site) %>% 
+  mutate(n = sum(n)) %>% 
+  ungroup() %>% 
   group_by(site) %>% 
-  mutate(n_visit = match(date, unique(date)),
-         n_visit = paste0("visit_", n_visit, sep = "")) %>% 
-  group_by(site, date) %>% 
-  unique() %>% 
+  mutate(n_visit = match(month, unique(month)),
+         n_visit = paste0("month_", month, sep = "")) %>% 
+  ungroup() %>% 
+  group_by(site, month, n_visit) %>% 
+  mutate(temp_id = cur_group_id()) %>% 
+  filter(!duplicated(temp_id)) %>% 
   ungroup() %>%
-  select(!c(date)) %>% 
+  select(!c(date, year, temp_id, month)) %>% 
   pivot_wider(names_from = c("n_visit"), values_from = c("n")) %>% 
-  select(!c(site, species_capture))
+  select(!c(site, species_capture)) 
 
 bull_umf <- unmarkedFramePCount(y = bull)
 
@@ -123,10 +136,51 @@ fm1_bull <- pcount( ~1  ~1,
                engine = "R",
                control=list(trace=T, REPORT=5))
 
-summary(fm1_rha_3)
+summary(fm1_bull)
 
-backTransform(fm1_rha_3, "state")
-backTransform(fm1_rha_3, "det")
+backTransform(fm1_bull, "state")
+backTransform(fm1_bull, "det")
 
 ```
 
+### Mean Annual abundance estimates per site_year.
+
+IE: tuttl, visit_1 = average count for 2017, visit_2 = average count for 2018, etc
+
+This bad
+
+```{r}
+
+bull <- pop_zeros %>% 
+  filter(species_capture == "lithobates_catesbeianus") %>% 
+  mutate(year = year(date),
+         #site = paste(year, site, sep = "_"),
+         month = month(date)) %>%
+  group_by(year, site) %>% 
+  mutate(n = sum(n)) %>% 
+  ungroup() %>% 
+  group_by(site) %>% 
+  mutate(n_visit = match(year, unique(year)),
+         n_visit = paste0("year_", year, sep = "")) %>% 
+  ungroup() %>% 
+  group_by(site, year, n_visit) %>% 
+  mutate(temp_id = cur_group_id()) %>% 
+  filter(!duplicated(temp_id)) %>% 
+  ungroup() %>%
+  select(!c(date, year, temp_id, month)) %>% 
+  pivot_wider(names_from = c("n_visit"), values_from = c("n")) %>% 
+  select(!c(site, species_capture)) 
+
+bull_umf <- unmarkedFramePCount(y = bull)
+
+fm1_bull <- pcount( ~1  ~1, 
+               data = bull_umf, 
+               engine = "R",
+               control=list(trace=T, REPORT=5))
+
+summary(fm1_bull)
+
+backTransform(fm1_bull, "state")
+backTransform(fm1_bull, "det")
+
+```
