@@ -120,7 +120,7 @@ for (i in 1:length(species_list)) {
         select(!species_capture)
   
       # run GAM per species
-      gam <- gam(log10_bd ~ s(month, k = k), data = dat, faimly = binomial(link = "logit"))  
+      gam <- gam(log10_bd ~ s(month, k = k), data = dat, faimly = poisson(link = "log"))  
         
         
       
@@ -235,7 +235,7 @@ for (i in 1:length(species_list)) {
 
   
       # run GAM per species
-      gam <- gam(log10_bd ~ s(unix), data = dat, faimly = binomial(link = "logit")) 
+      gam <- gam(log10_bd ~ s(unix), data = dat, faimly = poisson(link = "log")) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
