@@ -93,8 +93,7 @@ raw_prev <- dbGetQuery(connection, q)
 
 ### are each survey day independent? Meaning should we summarize per month per site or leave multiple prevelance estimates per month per site?
 
-**Mark here**: Summarizing by month makes sense.
-As I mention below, we will actually want to keep the the 0 and 1's in their raw form when we perform the analysis.
+**Mark here**: Summarizing by month makes sense. As I mention below, we will actually want to keep the the 0 and 1's in their raw form when we perform the analysis.
 
 ```{r}
 
@@ -483,18 +482,13 @@ summary(notophthalmus_viridescens)
 
 ### Questions:
 
--   k is basis function which is what?
-    how many time intervals?
-    Amount a function is ran over the data?
+-   k is basis function which is what? how many time intervals? Amount a function is ran over the data?
 
-    -   **Mark here**: $k$ essentially describes how many parameters our regression model will have.
-        The more parameters, the more flexibility to fit the data (which can also lead to over fitting).
+    -   **Mark here**: $k$ essentially describes how many parameters our regression model will have. The more parameters, the more flexibility to fit the data (which can also lead to over fitting).
 
--   How to set k?
-    Always choose max interval?
+-   How to set k? Always choose max interval?
 
-    -   **Mark here**: By default, the GAM function `s()` uses a *thin-plate regression spline* that regularizes/penalizes the spline so it is not too wiggly.
-        Thus, you want to ensure $k$ is large so you have the flexibility that you need to fit the data, and then the this plate regression will penalize away the extra complexity.
+    -   **Mark here**: By default, the GAM function `s()` uses a *thin-plate regression spline* that regularizes/penalizes the spline so it is not too wiggly. Thus, you want to ensure $k$ is large so you have the flexibility that you need to fit the data, and then the this plate regression will penalize away the extra complexity.
 
 -   How to choose sp?
 
@@ -502,41 +496,31 @@ summary(notophthalmus_viridescens)
 
 -   What is the transformation applied to y axis?
 
-    -   **Mark here**: See my code above.
-        With family `binomial("logit")` the predictions are made on the log odds (logit) scale.
-        If you want predictions on the *response* scale (i.e., in terms of probabilities, you just need to tell the `predict` function that this is what you want.
+    -   **Mark here**: See my code above. With family `binomial("logit")` the predictions are made on the log odds (logit) scale. If you want predictions on the *response* scale (i.e., in terms of probabilities, you just need to tell the `predict` function that this is what you want.
 
--   Do we only want to examine trend with time/month?
-    Do we want to add other predictors?
-    (multivariate?)
+-   Do we only want to examine trend with time/month? Do we want to add other predictors? (multivariate?)
 
     -   **Mark here**: As a first pass, the time trend is really all we need.
 
--   How come some models predict a prevalence greater then 1 and less then 0 even with logit link?!
-    (Very confused)
+-   How come some models predict a prevalence greater then 1 and less then 0 even with logit link?! (Very confused)
 
-    -   **Mark here**: Two reasons.
-        First, you had a bug where you wrote "famliy" instead of "family" so the model was actually fitting a gaussian.
-        Second, we want to fit the model to the 0 and 1 data not the average infection data.
+    -   **Mark here**: Two reasons. First, you had a bug where you wrote "famliy" instead of "family" so the model was actually fitting a gaussian. Second, we want to fit the model to the 0 and 1 data not the average infection data.
 
 -   Betar or Binomial regression?
 
     -   **Mark here**: Binomial regression is what we want.
 
--   What `method` do we choose?
-    `GCV.Cp`?
+-   What `method` do we choose? `GCV.Cp`?
 
     -   **Mark here**: `GCV.Cp` is a good one to use
 
 -   How do I read the significant results section?
 
-    -   **Mark here**: The significance section is essentially asking "Does the spline term improve the fit relative to the model without the spline term?".
-        If you have a significant spline term then, yes, the model with the spline term does a better job describing the data than a model without the spline term.
+    -   **Mark here**: The significance section is essentially asking "Does the spline term improve the fit relative to the model without the spline term?". If you have a significant spline term then, yes, the model with the spline term does a better job describing the data than a model without the spline term.
 
 -   Concurvity check does what?
 
-    -   **Mark here**: We don't have to worry about this with just one smooth term in the model.
-        It is essentially testing for a type of collinearity -- are multiple smooth terms describing the same variation?
+    -   **Mark here**: We don't have to worry about this with just one smooth term in the model. It is essentially testing for a type of collinearity -- are multiple smooth terms describing the same variation?
 
 ```{r}
 # Bullfrog test

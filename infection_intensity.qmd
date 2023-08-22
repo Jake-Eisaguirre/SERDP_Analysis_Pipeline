@@ -54,7 +54,7 @@ q <- "select r.region, s.site, v.date, v.survey_time,
      join visit v on s.site_id = v.site_id 
      join survey s2 on v.visit_id = s2.visit_id
      join capture c on s2.survey_id = c.survey_id 
-     full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_ids
+     full join serdp_bd sb on c.bd_swab_id = sb.bd_swab_id
      where r.region = 'pennsylvania'
      and v.date < '2020-12-31';"
 
@@ -127,10 +127,25 @@ for (i in 1:length(species_list)) {
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
       
+      months = seq(min(dat$month), max(dat$month), len=50)
+      newdata = data.frame(month=months)
+      gam_pred = predict(gam, newdata=newdata, type="response")
+      newdata$pred = gam_pred
+
+      average_prev = data.table(dat)[, .(prev=mean(log10_bd)), by=.(month)] 
+
       # make GAM plot
-      p <- plotGAM(gam, smooth.cov = 'month', rawOrFitted = "raw") +
-           theme_classic() +
-           ggtitle(paste(species_list[i]))
+      p <- ggplot(newdata) + geom_line(aes(x=month, y=pred)) +
+                             geom_point(data=average_prev, aes(x=month, y=prev), size=5) +
+                             xlab("Month") + ylab("Log10 Infection Intensity") + theme_classic() +
+                             ylim(c(-0.25, 3.5)) + ggtitle(species_list[i])
+      
+      
+    
+      # # make GAM plot
+      # p <- plotGAM(gam, smooth.cov = 'month', rawOrFitted = "raw") +
+      #      theme_classic() +
+      #      ggtitle(paste(species_list[i]))
 
     
     # save GAM plot in list
@@ -225,10 +240,28 @@ for (i in 1:length(species_list)) {
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
       
+      # Predictions
+      unix = seq(min(dat$unix), max(dat$unix), len=100)
+      newdata = data.frame(unix=unix)
+      gam_pred = predict(gam, newdata=newdata, type="response")
+      newdata$pred = gam_pred
+      
+      # Average prevalence for plotting
+      dat = data.table(dat)
+      dat[, c("month", "year"):=.(month(date), year(date))]
+      average_prev = dat[, .(prev=mean(log10_bd), mean_unix=mean(unix)), by=.(month, year)] 
+
       # make GAM plot
-      p <- plotGAM(gam, smooth.cov = 'unix', rawOrFitted = "raw") +
-           theme_classic() +
-           ggtitle(paste(species_list[i]))v
+      p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
+                             geom_point(data=average_prev, aes(x=mean_unix, y=prev), size=5) +
+                             xlab("Month") + ylab("Log10 Infection Intensity") + theme_classic() +
+                             ylim(c(-0.5, 5.4)) + ggtitle(species_list[i])
+        
+      
+      # # make GAM plot
+      # p <- plotGAM(gam, smooth.cov = 'unix', rawOrFitted = "raw") +
+      #      theme_classic() +
+      #      ggtitle(paste(species_list[i]))
         
         
         
