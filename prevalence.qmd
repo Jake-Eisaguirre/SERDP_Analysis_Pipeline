@@ -160,7 +160,8 @@ for (i in 1:length(species_list)) {
       newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
       
       # save predictions
-      write_rds(as.data.frame(newdata), here("outputs", "prevalence","mean_annual_seasonal_trend", paste(species_list[i],".rds")))
+      write_rds(as.data.frame(newdata), here("outputs", "prevalence","mean_annual_seasonal_trend", paste(species_list[i],".rds", sep = "")))
+      
       
       average_prev <- dat %>% 
         group_by(month) %>% 
@@ -275,7 +276,7 @@ for (i in 1:length(species_list)) {
       newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
       
       # save predictions
-      write_rds(as.data.frame(newdata), here("outputs", "prevalence", "unix_seasonal_trend", paste(species_list[i],".rds")))
+      write_rds(as.data.frame(newdata), here("outputs", "prevalence", "unix_seasonal_trend", paste(species_list[i],".rds", sep = "")))
       
       # Average prevalence for plotting
       dat = data.table(dat)
