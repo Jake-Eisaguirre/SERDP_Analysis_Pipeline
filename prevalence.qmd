@@ -44,28 +44,28 @@ dbExecute(connection, "set search_path to survey_data")
 
 ```{r}
 #| output: false
-library(yaml)
-
-dbaccess = yaml.load_file("/Users/mqwilber/Repos/panama_amphibian_recovery/code/dbaccess.yml")
-
-tryCatch({
-    drv <- dbDriver("Postgres")
-    print("Connecting to Database…")
-    connection <- dbConnect(drv,
-                 dbname = dbaccess$aws_dbname,
-                 host = dbaccess$aws_host,
-                 port = dbaccess$aws_port,
-                 user = dbaccess$aws_user,
-                 password = dbaccess$aws_password,
-                 timezone=NULL)
-    print("Database Connected!")
-    },
-    error=function(cond) {
-            print("Unable to connect to Database.")
-    })
-
-#search path
-dbExecute(connection, "set search_path to survey_data")
+# library(yaml)
+# 
+# dbaccess = yaml.load_file("/Users/mqwilber/Repos/panama_amphibian_recovery/code/dbaccess.yml")
+# 
+# tryCatch({
+#     drv <- dbDriver("Postgres")
+#     print("Connecting to Database…")
+#     connection <- dbConnect(drv,
+#                  dbname = dbaccess$aws_dbname,
+#                  host = dbaccess$aws_host,
+#                  port = dbaccess$aws_port,
+#                  user = dbaccess$aws_user,
+#                  password = dbaccess$aws_password,
+#                  timezone=NULL)
+#     print("Database Connected!")
+#     },
+#     error=function(cond) {
+#             print("Unable to connect to Database.")
+#     })
+# 
+# #search path
+# dbExecute(connection, "set search_path to survey_data")
 
 ```
 
@@ -91,33 +91,8 @@ raw_prev <- dbGetQuery(connection, q)
 
 ## Clean data and add prevalence
 
-### are each survey day independent? Meaning should we summarize per month per site or leave multiple prevelance estimates per month per site?
-
-**Mark here**: Summarizing by month makes sense. As I mention below, we will actually want to keep the the 0 and 1's in their raw form when we perform the analysis.
-
 ```{r}
 
-# Mean prevalence per site, per day (some sites sampled twice a month), per species
-clean_prev <- raw_prev %>% 
-  drop_na(bd_swab_id) %>%
-  drop_na(species_capture) %>%
-  select(site, date, species_capture, bd_load) %>% 
-  mutate(infected = case_when(bd_load > 0  ~ 1,
-                              is.na(bd_load) ~ 0),
-         month = month(date),
-         year = year(date)) %>%
-  group_by(site, species_capture, date) %>% 
-  mutate(n_infected = sum(infected),
-         n = n(),
-         prevalence = n_infected/n) %>% 
-  ungroup() %>% 
-  group_by(site, species_capture, date, n, n_infected) %>% # add this for offset() (,n, n_infected)
-  summarise(average_prev = mean(prevalence)) %>% # summaries or mutate?
-  ungroup()
-
-
-# Mark here: Here is another option for cleaning where we don't do any grouping. 
-# This is what we will want for the GAM
 clean_prev2 <- raw_prev %>% 
   drop_na(bd_swab_id) %>%
   drop_na(species_capture) %>%
@@ -137,75 +112,7 @@ plot(clean_prev$date, clean_prev$average_prev)
 
 # Mean Annual Seasonal Trend
 
--   Am I properly capturing the varying raw population count per site per visit per species when using prevelance as a decimal? IE One day bull frogs at site x on day y had 3 out of 12 infected and then bull frogs at site x on day z had 7 out 28 infected. Is this a problem? offset(n)? `gam(n_infected ~ s(month, k = k) + offset(log(n)), data = dat, faimly = poisson(link = "log"))` \<- this gives much nicer seasonal curves.
--   **Mark here**: Good question. We can actually run the GAM directly on the 0 to 1 data and you don't have to convert to prevalence first. Though, converting to prevalence is nice for seeing the general trends through time. By just using the 0 and 1 data, we automatically account for any type of offset (see code below)
-
 ## Now create loop to run GAM for each species `average_prev ~ s(month)`
-
-```{r}
-# Create empty objects
-species_list <- unique(clean_prev$species_capture)
-
-plots <- list()
-
-spec_names <- c()
-
-# Loop through each species
-for (i in 1:length(species_list)) {
-  
-  # find species with low k value
-  k <- clean_prev %>% 
-    filter(species_capture == species_list[i]) %>% 
-    mutate(month = month(date)) %>% 
-    select(month) %>% 
-    unique() %>% 
-    nrow()
-  
-  # only run models for species with k>2
-  if (k > 2) {
-  
-      # add filter species list with k>2   
-      spec_names[i] <- species_list[i]
-      
-      # filter clean data set for species list of k>2
-      dat <- clean_prev %>% 
-        select(species_capture, date, average_prev) %>% # (, n, n_infected) add these for offset model
-        filter(species_capture == species_list[i]) %>%  
-        mutate(month = month(date)) %>% 
-        ungroup() %>% 
-        select(!species_capture)
-  
-      # run GAM per species
-      gam <- gam(average_prev ~ s(month, k = k), data = dat, family = binomial(link = "logit"))  
-        
-        
-      
-      # create new object in environment for each model output per species
-      assign(species_list[i], gam) 
-      
-      # make GAM plot
-      p <- plotGAM(gam, smooth.cov = 'month') +
-           theme_classic() +
-           geom_point(data = dat, aes(x=month, y = average_prev), pch = 1) +
-           ggtitle(paste(species_list[i]))
-      
-      #offest plot
-      #p <- plot(gam, shade = T, shade.col = "lightgreen", seWithMean = T, main = paste(species_list[i]))
-    
-    # save GAM plot in list
-     plots[[i]] <- p
-    
-  
-  }
-  
-  # Error checking during loop
-  print(paste("done with", species_list[i]))
-
-}
-
-```
-
-**Mark here**: Alternative fitting where we keep 0 and 1 in the original form and don't convert to average prevalence
 
 ```{r}
 # Create empty objects
@@ -247,14 +154,25 @@ for (i in 1:length(species_list)) {
 
       months = seq(min(dat$month), max(dat$month), len=50)
       newdata = data.frame(month=months)
-      gam_pred = predict(gam, newdata=newdata, type="response")
-      newdata$pred = gam_pred
+      gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
+      newdata$pred = gam_pred$fit
+      newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
+      newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
+      
+      # save predictions
+      write_rds(as.data.frame(newdata), here("outputs", "prevalence","mean_annual_seasonal_trend", paste(species_list[i],".rds")))
+      
+      average_prev <- dat %>% 
+        group_by(month) %>% 
+        mutate(prev = mean(infected))
+      
 
-      average_prev = data.table(dat)[, .(prev=mean(infected)), by=.(month)] 
+      #average_prev = data.table(dat)[, .(prev=mean(infected)), by=.(month)] 
 
       # make GAM plot
       p <- ggplot(newdata) + geom_line(aes(x=month, y=pred)) +
                              geom_point(data=average_prev, aes(x=month, y=prev), size=5) +
+                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = month), alpha = 0.2, fill = "blue")+
                              xlab("Month") + ylab("Probability of infection") + theme_classic() +
                              ylim(c(0, 1)) + ggtitle(species_list[i])
       
@@ -307,73 +225,6 @@ summary(lithobates_catesbeianus)
 
 ```{r}
 # Create empty objects
-species_list <- unique(clean_prev$species_capture)
-
-plots <- list()
-
-spec_names <- c()
-
-# Loop through each species
-for (i in 1:length(species_list)) {
-  
-  # find species with low k value
-  k <- clean_prev %>% 
-    filter(species_capture == species_list[i]) %>%
-    mutate(year_month = as_date(date, format = "%Y-%m"),
-           year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
-           year_month = sort(year_month)) %>%  
-    select(year_month) %>% 
-    unique() %>% 
-    nrow()
-  
-  # only run models for species with k>8
-  if (k > 9) {
-  
-      # add filter species list with k>8 - 3 species have too little data    
-      spec_names[i] <- species_list[i]
-      
-      # filter clean data set for species list of k>8
-      dat <- clean_prev %>% 
-        select(species_capture, date, average_prev) %>% 
-        filter(species_capture == species_list[i]) %>%  
-        ungroup() %>% 
-        select(!species_capture) %>% 
-        mutate(unix = as_date(date, format = "%Y-%m"),
-               unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
-               unix = sort(unix)) 
-
-  
-      # run GAM per species
-      gam <- gam(average_prev ~ s(unix), data = dat, faimly = binomial(link = "logit")) 
-      
-      # create new object in environment for each model output per species
-      assign(species_list[i], gam) 
-      
-      # make GAM plot
-      p <- plotGAM(gam, smooth.cov = 'unix') +
-           theme_classic() +
-           geom_point(data = dat, aes(x=unix, y = average_prev), pch = 1) +
-           ggtitle(paste(species_list[i]))
-        
-        
-        
-    # save GAM plot in list
-     plots[[i]] <- p
-    
-  
-  }
-  
-  # Error checking during loop
-  print(paste("done with", species_list[i]))
-
-}
-
-```
-
-**Mark here**: Adjusting to just use the 0 and 1 data
-
-```{r}
-# Create empty objects
 species_list <- unique(clean_prev2$species_capture)
 
 plots <- list()
@@ -418,8 +269,13 @@ for (i in 1:length(species_list)) {
       # Predictions
       unix = seq(min(dat$unix), max(dat$unix), len=100)
       newdata = data.frame(unix=unix)
-      gam_pred = predict(gam, newdata=newdata, type="response")
-      newdata$pred = gam_pred
+      gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
+      newdata$pred = gam_pred$fit
+      newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
+      newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
+      
+      # save predictions
+      write_rds(as.data.frame(newdata), here("outputs", "prevalence", "unix_seasonal_trend", paste(species_list[i],".rds")))
       
       # Average prevalence for plotting
       dat = data.table(dat)
@@ -429,6 +285,7 @@ for (i in 1:length(species_list)) {
       # make GAM plot
       p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
                              geom_point(data=average_prev, aes(x=mean_unix, y=prev), size=5) +
+                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
                              xlab("Month") + ylab("Probability of infection") + theme_classic() +
                              ylim(c(0, 1)) + ggtitle(species_list[i])
         
@@ -475,6 +332,19 @@ print(Objs)
 # Choose species from above list
 summary(notophthalmus_viridescens)
 ```
+
+To do: extract standard errors/CI 
+
+
+
+
+
+
+
+
+
+
+
 
 # Practice
 
