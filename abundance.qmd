@@ -4,6 +4,9 @@ format: html
 editor: visual
 ---
 
+any time point through time what is the abundance at each site or in Pennn
+fit gam to VES counts
+
 ## Load Packages
 
 ```{r}
