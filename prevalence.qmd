@@ -175,7 +175,7 @@ for (i in 1:length(species_list)) {
                              geom_point(data=average_prev, aes(x=month, y=prev), size=5) +
                              geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = month), alpha = 0.2, fill = "blue")+
                              xlab("Month") + ylab("Probability of infection") + theme_classic() +
-                             ylim(c(0, 1)) + ggtitle(species_list[i])
+                             coord_cartesian(ylim = c(0,1))  + ggtitle(species_list[i])
       
     # save GAM plot in list
      plots[[i]] <- p
@@ -288,7 +288,8 @@ for (i in 1:length(species_list)) {
                              geom_point(data=average_prev, aes(x=mean_unix, y=prev), size=5) +
                              geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
                              xlab("Month") + ylab("Probability of infection") + theme_classic() +
-                             ylim(c(0, 1)) + ggtitle(species_list[i])
+                             coord_cartesian(ylim = c(0,1))  + 
+                             ggtitle(species_list[i])
         
         
     # save GAM plot in list
