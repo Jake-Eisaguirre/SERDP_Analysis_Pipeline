@@ -175,6 +175,17 @@ plots[1:length(plots)]
 
 ```
 
+## Save plots
+```{r}
+for (i in 1:length(plots)) {
+  
+  ggsave(here("figures", "infection_intensity", "mean_annual_seasonal_trend", paste(species_list[i], ".jpeg", sep="")),
+         plot = plots[[i]])
+  
+}
+
+```
+
 # Examine Model Outputs
 
 ### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
@@ -291,6 +302,17 @@ for (i in 1:length(species_list)) {
 
 plots[1:length(plots)]
 
+
+```
+
+## Save plots
+```{r}
+for (i in 1:length(plots)) {
+  
+  ggsave(here("figures", "infection_intensity", "unix_seasonal_trend", paste(species_list[i], ".jpeg", sep="")),
+         plot = plots[[i]])
+  
+}
 
 ```
 
