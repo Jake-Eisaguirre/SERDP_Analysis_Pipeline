@@ -64,6 +64,8 @@ raw_int <- dbGetQuery(connection, q)
 
 ## Clean infection intesity data
 
+### exclude zeros 
+
 ```{r}
 
 clean_int <- raw_int %>% 
@@ -73,7 +75,8 @@ clean_int <- raw_int %>%
          month = month(date),
          year = year(date),
          sample_bd_qty = log10(sample_bd_qty + 1)) %>% 
-  rename(log10_bd= sample_bd_qty)
+  rename(log10_bd= sample_bd_qty) %>% 
+  filter(log10_bd > 0)
 
 
 plot(clean_int$date, clean_int$log10_bd)
@@ -120,7 +123,7 @@ for (i in 1:length(species_list)) {
         select(!species_capture)
   
       # run GAM per species
-      gam <- gam(log10_bd ~ s(month, k = k), data = dat, faimly = poisson(link = "log"))  
+      gam <- gam(log10_bd ~ s(month, k = k), data = dat)  
         
         
       
@@ -129,14 +132,20 @@ for (i in 1:length(species_list)) {
       
       months = seq(min(dat$month), max(dat$month), len=50)
       newdata = data.frame(month=months)
-      gam_pred = predict(gam, newdata=newdata, type="response")
-      newdata$pred = gam_pred
+      gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
+      newdata$pred = gam_pred$fit
+      newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
+      newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
+      
+      # save predictions
+      write_rds(as.data.frame(newdata), here("outputs", "infection_intensity","mean_annual_seasonal_trend", paste(species_list[i],".rds")))
 
       average_prev = data.table(dat)[, .(prev=mean(log10_bd)), by=.(month)] 
 
       # make GAM plot
       p <- ggplot(newdata) + geom_line(aes(x=month, y=pred)) +
                              geom_point(data=average_prev, aes(x=month, y=prev), size=5) +
+                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = month), alpha = 0.2, fill = "blue")+
                              xlab("Month") + ylab("Log10 Infection Intensity") + theme_classic() +
                              ylim(c(-0.25, 3.5)) + ggtitle(species_list[i])
       
@@ -220,7 +229,7 @@ for (i in 1:length(species_list)) {
   # only run models for species with k>8
   if (k > 9) {
   
-      # add filter species list with k>8 - 3 species have too little data    
+      # add filter species list with k>8   
       spec_names[i] <- species_list[i]
       
       # filter clean data set for species list of k>8
@@ -235,7 +244,7 @@ for (i in 1:length(species_list)) {
 
   
       # run GAM per species
-      gam <- gam(log10_bd ~ s(unix), data = dat, faimly = poisson(link = "log")) 
+      gam <- gam(log10_bd ~ s(unix), data = dat) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
@@ -243,8 +252,14 @@ for (i in 1:length(species_list)) {
       # Predictions
       unix = seq(min(dat$unix), max(dat$unix), len=100)
       newdata = data.frame(unix=unix)
-      gam_pred = predict(gam, newdata=newdata, type="response")
-      newdata$pred = gam_pred
+      gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
+      newdata$pred = gam_pred$fit
+      newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
+      newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
+      
+      # save predictions
+      write_rds(as.data.frame(newdata), here("outputs", "infection_intensity", "unix_seasonal_trend", paste(species_list[i],".rds")))
+      
       
       # Average prevalence for plotting
       dat = data.table(dat)
@@ -253,15 +268,11 @@ for (i in 1:length(species_list)) {
 
       # make GAM plot
       p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
-                             geom_point(data=average_prev, aes(x=mean_unix, y=prev), size=5) +
+                             geom_point(data=dat, aes(x=unix, y=log10_bd), size=3, alpha = 0.5) +
+                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
                              xlab("Month") + ylab("Log10 Infection Intensity") + theme_classic() +
                              ylim(c(-0.5, 5.4)) + ggtitle(species_list[i])
         
-      
-      # # make GAM plot
-      # p <- plotGAM(gam, smooth.cov = 'unix', rawOrFitted = "raw") +
-      #      theme_classic() +
-      #      ggtitle(paste(species_list[i]))
         
         
         
@@ -308,3 +319,5 @@ print(Objs)
 # Choose species from above list
 summary(notophthalmus_viridescens)
 ```
+
+to do: CI, save mean as csv with upper and lower bound, and predicted time frame
