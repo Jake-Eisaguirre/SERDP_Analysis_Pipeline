@@ -1,11 +1,10 @@
 ---
 title: "abundance"
 format: html
-editor: visual
+editor: source
 ---
 
-any time point through time what is the abundance at each site or in Pennn
-fit gam to VES counts
+any time point through time what is the abundance at each site or in Pennn fit gam to VES counts
 
 ## Load Packages
 
@@ -16,7 +15,7 @@ if (!require(librarian)){
   library(librarian)
 }
 
-librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, unmarked)
+librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, unmarked, mgcv, voxel, data.table)
 
 ```
 
@@ -84,13 +83,125 @@ visits_per_site <- raw_visits %>%
 
 ```{r}
 
-cleaned_up_cap <- raw_cap %>% 
+clean_cap <- raw_cap %>% 
   drop_na(species_capture) %>% 
   group_by(site, date, species_capture) %>% 
-  summarise(n = n())
+  reframe(n = n())
 
 
 ```
+
+## Gam Model - all of Penn per species - assumming detection of 1 - We want raw counts on the plot or predicted points?
+```{r}
+
+# bull <- cleaned_up_cap %>% 
+#   filter(species_capture == "lithobates_catesbeianus") %>% 
+#   mutate(year_month = as_date(date, format = "%Y-%m"),
+#          year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")))
+# 
+# 
+# mod <- gam(n ~ s(year_month, k = 117), data = bull)
+# 
+# plot(mod)
+
+
+# Create empty objects
+species_list <- unique(clean_cap$species_capture)
+
+plots <- list()
+
+spec_names <- c()
+
+# Loop through each species
+for (i in 1:length(species_list)) {
+  
+  # find species with low k value
+  k <- clean_cap %>% 
+    filter(species_capture == species_list[i]) %>%
+    mutate(year_month = as_date(date, format = "%Y-%m"),
+           year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
+           year_month = sort(year_month)) %>%  
+    select(year_month) %>% 
+    unique() %>% 
+    nrow()
+  
+  # only run models for species with k>8
+  if (k > 9) {
+  
+      # add filter species list with k>8   
+      spec_names[i] <- species_list[i]
+      
+      # filter clean data set for species list of k>8
+      dat <- clean_cap %>% 
+        select(species_capture, date, n) %>% 
+        filter(species_capture == species_list[i]) %>%  
+        ungroup() %>% 
+        select(!species_capture) %>% 
+        mutate(unix = as_date(date, format = "%Y-%m"),
+               unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
+               unix = sort(unix)) 
+
+  
+      # run GAM per species
+      gam <- gam(n ~ s(unix), data = dat) 
+      
+      # create new object in environment for each model output per species
+      assign(species_list[i], gam) 
+      
+      # Predictions
+      unix = seq(min(dat$unix), max(dat$unix), len=100)
+      newdata = data.frame(unix=unix)
+      gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
+      newdata$pred = gam_pred$fit
+      newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
+      newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
+      
+      # save predictions
+      #write_rds(as.data.frame(newdata), here("outputs", "infection_intensity", "unix_seasonal_trend", paste(species_list[i],".rds", sep = "")))
+      
+      
+      # Average prevalence for plotting
+      dat = data.table(dat)
+      dat[, c("month", "year"):=.(month(date), year(date))]
+      average_n = dat[, .(av_n=mean(n), mean_unix=mean(unix)), by=.(month, year)] 
+
+      # make GAM plot
+      p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
+                             geom_point(data=dat, aes(x=unix, y=n), size=3, alpha = 0.5) + # raw or predicted counts displayed?
+                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
+                             xlab("Unix") + ylab("Abundance (Perfect Detection)") + theme_classic() +
+                             coord_cartesian(ylim = c(0, max(newdata$upper_se) + 5)) + ggtitle(species_list[i])s
+        
+        
+        
+        
+    # save GAM plot in list
+     plots[[i]] <- p
+    
+  
+  }
+  
+  # Error checking during loop
+  print(paste("done with", species_list[i]))
+
+}
+
+
+
+```
+
+## Examine plots
+
+```{r}
+
+
+plots[1:length(plots)]
+
+
+```
+
+
+# Old N-Mix models
 
 ## Populate Site Zeros
 

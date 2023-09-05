@@ -1,7 +1,7 @@
 ---
 title: "infection_intensity"
 format: html
-editor: visual
+editor: source
 ---
 
 ## Load Packages
@@ -64,7 +64,7 @@ raw_int <- dbGetQuery(connection, q)
 
 ## Clean infection intesity data
 
-### exclude zeros 
+### exclude zeros
 
 ```{r}
 
@@ -176,6 +176,7 @@ plots[1:length(plots)]
 ```
 
 ## Save plots
+
 ```{r}
 for (i in 1:length(plots)) {
   
@@ -306,6 +307,7 @@ plots[1:length(plots)]
 ```
 
 ## Save plots
+
 ```{r}
 for (i in 1:length(plots)) {
   
