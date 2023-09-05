@@ -202,7 +202,7 @@ for (i in 1:length(plots)) {
 
 ```
 
-## Gam Model - per site per species - assumming detection of 1
+## Gam Model - per site per species - assumming detection of 1 - Nested for loop
 ```{r}
 # Create empty objects
 species_list <- unique(clean_cap$species_capture)
