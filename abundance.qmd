@@ -188,12 +188,23 @@ plots[1:length(plots)]
 
 
 ```
+## Save plots
 
+```{r}
+for (i in 1:length(plots)) {
+  
+  ggsave(here("figures", "abundance", "gam_unix_per_species", paste(species_list[i], ".jpeg", sep="")),
+         plot = plots[[i]])
+  
+}
+
+
+
+```
 
 # Old N-Mix models
 
 ## Populate Site Zeros
-
 ```{r}
 
 pop_zeros <- raw_visits %>% 
