@@ -132,7 +132,7 @@ for (i in 1:length(species_list)) {
 
   
       # run GAM per species
-      gam <- gam(n ~ s(unix), data = dat) 
+      gam <- gam(n ~ s(unix, k = k), data = dat) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
@@ -201,6 +201,135 @@ for (i in 1:length(plots)) {
 
 
 ```
+
+## Gam Model - per site per species - assumming detection of 1
+```{r}
+# Create empty objects
+species_list <- unique(clean_cap$species_capture)
+
+plots <- list()
+
+all_plots <- list()
+
+spec_names <- c()
+
+site_list <- unique(clean_cap$site)
+
+# Loop for site
+for (j in 1:length(site_list)){
+
+# Loop through each species
+    for (i in 1:length(species_list)) {
+      
+      # find species with low k value
+      k <- clean_cap %>% 
+        filter(species_capture == species_list[i],
+               site == site_list[j]) %>%
+        mutate(year_month = as_date(date, format = "%Y-%m"),
+               year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
+               year_month = sort(year_month)) %>%  
+        select(year_month) %>% 
+        unique() %>% 
+        nrow()
+      
+      # only run models for species with k>8
+      if (k > 9) {
+      
+          # add filter species list with k>8   
+          spec_names[i] <- species_list[i]
+          
+          # filter clean data set for species list of k>8
+          dat <- clean_cap %>% 
+            select(species_capture, date, n, site) %>% 
+            filter(species_capture == species_list[i],
+                   site == site_list[j]) %>%  
+            ungroup() %>% 
+            select(!species_capture, site) %>% 
+            mutate(unix = as_date(date, format = "%Y-%m"),
+                   unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
+                   unix = sort(unix)) 
+    
+      
+          # run GAM per species
+          gam <- gam(n ~ s(unix, k = k), data = dat) 
+          
+          # create new object in environment for each model output per species
+          assign(paste(site_list[j], "_",species_list[i], sep = ""), gam) 
+          
+          # Predictions
+          unix = seq(min(dat$unix), max(dat$unix), len=100)
+          newdata = data.frame(unix=unix)
+          gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
+          newdata$pred = gam_pred$fit
+          newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
+          newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
+          
+          # save predictions
+          #write_rds(as.data.frame(newdata), here("outputs", "abundance", "gam_unix_per_species", paste(species_list[i],".rds", sep = "")))
+          
+          
+          # Average prevalence for plotting
+          dat = data.table(dat)
+          dat[, c("month", "year"):=.(month(date), year(date))]
+          average_n = dat[, .(av_n=mean(n), mean_unix=mean(unix)), by=.(month, year)] 
+    
+          # make GAM plot
+          p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
+                                 geom_point(data=dat, aes(x=unix, y=n), size=3, alpha = 0.5) + # raw or predicted counts displayed?
+                                 geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
+                                 xlab("Unix") + ylab("Abundance (Perfect Detection)") + theme_classic() +
+                                 coord_cartesian(ylim = c(0, max(newdata$upper_se) + 5)) + 
+                                 ggtitle(paste(site_list[j], "-", species_list[i], sep = ""))
+            
+            
+            
+            
+        # save GAM plot in list
+         plots[[i]] <- p
+        
+      
+      }
+      
+      # Error checking during loop
+      #print(paste("done with", site_list[j], "_", species_list[i]))
+    
+    }
+  
+  all_plots[i] <- plots
+}
+```
+
+## Examine plots
+
+```{r}
+
+
+plots[1:length(all_plots)]
+
+
+```
+
+## Examine Model Outputs
+
+### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
+
+```{r}
+
+ClassFilter <- function(x) inherits(get(x), 'gam')
+
+Objs <- Filter(ClassFilter, ls())
+
+print(Objs)
+
+```
+### Select which GAM model to view
+
+```{r}
+# Choose species from above list
+summary(tryon_weber_plethodon_cinereus)
+```
+
+
 
 # Old N-Mix models
 

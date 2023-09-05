@@ -1,7 +1,7 @@
 ---
 title: "bd_prevalence_GAM"
 format: html
-editor: visual
+editor: source
 ---
 
 ## Load Packages
@@ -200,6 +200,7 @@ plots[1:length(plots)]
 ```
 
 ## Save plots
+
 ```{r}
 for (i in 1:length(plots)) {
   
@@ -209,7 +210,6 @@ for (i in 1:length(plots)) {
 }
 
 ```
-
 
 ## Examine Model Outputs
 
@@ -359,18 +359,7 @@ print(Objs)
 summary(notophthalmus_viridescens)
 ```
 
-To do: extract standard errors/CI 
-
-
-
-
-
-
-
-
-
-
-
+To do: extract standard errors/CI
 
 # Practice
 
