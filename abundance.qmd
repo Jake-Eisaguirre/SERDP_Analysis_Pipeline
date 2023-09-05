@@ -94,17 +94,6 @@ clean_cap <- raw_cap %>%
 ## Gam Model - all of Penn per species - assumming detection of 1 - We want raw counts on the plot or predicted points?
 ```{r}
 
-# bull <- cleaned_up_cap %>% 
-#   filter(species_capture == "lithobates_catesbeianus") %>% 
-#   mutate(year_month = as_date(date, format = "%Y-%m"),
-#          year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")))
-# 
-# 
-# mod <- gam(n ~ s(year_month, k = 117), data = bull)
-# 
-# plot(mod)
-
-
 # Create empty objects
 species_list <- unique(clean_cap$species_capture)
 
@@ -157,7 +146,7 @@ for (i in 1:length(species_list)) {
       newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
       
       # save predictions
-      #write_rds(as.data.frame(newdata), here("outputs", "infection_intensity", "unix_seasonal_trend", paste(species_list[i],".rds", sep = "")))
+      write_rds(as.data.frame(newdata), here("outputs", "abundance", "gam_unix_per_species", paste(species_list[i],".rds", sep = "")))
       
       
       # Average prevalence for plotting
@@ -170,7 +159,7 @@ for (i in 1:length(species_list)) {
                              geom_point(data=dat, aes(x=unix, y=n), size=3, alpha = 0.5) + # raw or predicted counts displayed?
                              geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
                              xlab("Unix") + ylab("Abundance (Perfect Detection)") + theme_classic() +
-                             coord_cartesian(ylim = c(0, max(newdata$upper_se) + 5)) + ggtitle(species_list[i])s
+                             coord_cartesian(ylim = c(0, max(newdata$upper_se) + 5)) + ggtitle(species_list[i])
         
         
         
