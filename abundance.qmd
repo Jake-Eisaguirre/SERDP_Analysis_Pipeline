@@ -201,6 +201,29 @@ plots[1:length(plots)]
 
 
 ```
+
+
+## Examine Model Outputs
+
+### Print all GAM model outputs - Make sure to run the above loop to populate correct GAM models
+
+```{r}
+
+ClassFilter <- function(x) inherits(get(x), 'gam')
+
+Objs <- Filter(ClassFilter, ls())
+
+print(Objs)
+
+```
+### Select which GAM model to view
+
+```{r}
+# Choose species from above list
+summary(wood_lab_pond_lithobates_sylvaticus)
+```
+
+
 ## Save plots
 
 ```{r}
@@ -249,7 +272,7 @@ for (j in 1:length(site_list)){
       if (k > 9) {
       
           # add filter species list with k>8   
-          spec_names[i] <- species_list[i]
+          #spec_names[i] <- species_list[i]
           
           # filter clean data set for species list of k>8
           dat <- clean_cap %>% 
@@ -267,7 +290,7 @@ for (j in 1:length(site_list)){
           gam <- gam(n ~ s(unix, k = k), data = dat) 
           
           # create new object in environment for each model output per species
-          assign(paste(site_list[j], "_",species_list[i], sep = ""), gam) 
+          #assign(paste(site_list[j], "_",species_list[i], sep = ""), gam) 
           
           # Predictions
           unix = seq(min(dat$unix), max(dat$unix), len=100)
@@ -278,7 +301,8 @@ for (j in 1:length(site_list)){
           newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
           
           # save predictions
-          #write_rds(as.data.frame(newdata), here("outputs", "abundance", "gam_unix_per_species", paste(species_list[i],".rds", sep = "")))
+          write_rds(as.data.frame(newdata), here("outputs", "abundance", "gam_unix_per_species_site", 
+                                                 paste(site_list[j], "_", species_list[i],".rds", sep = "")))
           
           
           # Average prevalence for plotting
@@ -286,8 +310,8 @@ for (j in 1:length(site_list)){
           dat[, c("month", "year"):=.(month(date), year(date))]
           average_n = dat[, .(av_n=mean(n), mean_unix=mean(unix)), by=.(month, year)] 
     
-          # make GAM plot
-          p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
+          # make GAM plot 
+           p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
                                  geom_point(data=dat, aes(x=unix, y=n), size=3, alpha = 0.5) + # raw or predicted counts displayed?
                                  geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
                                  xlab("Unix") + ylab("Abundance (Perfect Detection)") + theme_classic() +
@@ -299,17 +323,22 @@ for (j in 1:length(site_list)){
             
         # save GAM plot in list
          plots[[i]] <- p
+         
         
       
       }
       
       # Error checking during loop
-      #print(paste("done with", site_list[j], "_", species_list[i]))
+      print(paste("done with", site_list[j], "_", species_list[i]))
     
-    }
+  }
   
-  all_plots[[i]] <- plots
+           
+  all_plots[[j]] <- plots
+
 }
+
+
 ```
 
 ## Examine plots
@@ -339,10 +368,25 @@ print(Objs)
 
 ```{r}
 # Choose species from above list
-summary(tryon_weber_plethodon_cinereus)
+summary(wood_lab_pond_lithobates_sylvaticus)
 ```
 
+## Save plots
 
+```{r}
+for (i in 1:length(plots)) {
+  
+  ggsave(here("figures", "abundance", "gam_unix_per_species_site", paste(site_list[j], "_", species_list[i], ".jpeg", sep="")),
+         plot = all_plots[[i]])
+  
+}
+
+
+
+```
+
+---------------------------------------------------
+#STOP
 
 # Old N-Mix models
 
