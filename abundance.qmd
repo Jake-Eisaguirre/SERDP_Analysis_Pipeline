@@ -4,7 +4,7 @@ format: html
 editor: source
 ---
 
-any time point through time what is the abundance at each site or in Pennn fit gam to VES counts
+any time point through time what is the abundance at each site or in Pennn fit gam 
 
 ## Load Packages
 
@@ -79,15 +79,28 @@ visits_per_site <- raw_visits %>%
   summarise(n = n())
 ```
 
+
+
 ## Summarize Data
 
 ```{r}
 
-clean_cap <- raw_cap %>% 
+mid_clean_cap <- raw_cap %>% 
   drop_na(species_capture) %>% 
   group_by(site, date, species_capture) %>% 
   reframe(n = n())
 
+
+```
+
+## Populate Site Zeros
+```{r}
+
+clean_cap <- raw_visits %>% 
+  left_join(mid_clean_cap, by = c("site", "date")) %>% 
+  complete(nesting(date, site),
+           species_capture = unique(mid_clean_cap$species_capture),
+           fill = list(n = 0))
 
 ```
 
@@ -118,7 +131,7 @@ for (i in 1:length(species_list)) {
   if (k > 9) {
   
       # add filter species list with k>8   
-      spec_names[i] <- species_list[i]
+      #spec_names[i] <- species_list[i]
       
       # filter clean data set for species list of k>8
       dat <- clean_cap %>% 
@@ -295,7 +308,7 @@ for (j in 1:length(site_list)){
     
     }
   
-  all_plots[i] <- plots
+  all_plots[[i]] <- plots
 }
 ```
 

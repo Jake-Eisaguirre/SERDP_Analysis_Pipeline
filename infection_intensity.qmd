@@ -112,7 +112,7 @@ for (i in 1:length(species_list)) {
   if (k > 2) {
   
       # add filter species list with k>2   
-      spec_names[i] <- species_list[i]
+      #spec_names[i] <- species_list[i]
       
       # filter clean data set for species list of k>2
       dat <- clean_int %>% 
