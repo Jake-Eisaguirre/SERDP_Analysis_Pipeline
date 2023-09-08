@@ -220,7 +220,7 @@ print(Objs)
 
 ```{r}
 # Choose species from above list
-summary(wood_lab_pond_lithobates_sylvaticus)
+summary(lithobates_sylvaticus)
 ```
 
 
@@ -243,19 +243,21 @@ for (i in 1:length(plots)) {
 # Create empty objects
 species_list <- unique(clean_cap$species_capture)
 
-plots <- list()
 
 all_plots <- list()
 
-spec_names <- c()
+plots <- list()
 
 site_list <- unique(clean_cap$site)
 
 # Loop for site
-for (j in 1:length(site_list)){
+for (j in 1:length(site_list)){ 
+
+  
 
 # Loop through each species
     for (i in 1:length(species_list)) {
+      
       
       # find species with low k value
       k <- clean_cap %>% 
@@ -270,9 +272,7 @@ for (j in 1:length(site_list)){
       
       # only run models for species with k>8
       if (k > 9) {
-      
-          # add filter species list with k>8   
-          #spec_names[i] <- species_list[i]
+
           
           # filter clean data set for species list of k>8
           dat <- clean_cap %>% 
@@ -311,7 +311,6 @@ for (j in 1:length(site_list)){
           average_n = dat[, .(av_n=mean(n), mean_unix=mean(unix)), by=.(month, year)] 
     
           # make GAM plot 
-          # Change "p<-" to "print(ggplot info)" and all the plots will print#
            p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
                                  geom_point(data=dat, aes(x=unix, y=n), size=3, alpha = 0.5) + # raw or predicted counts displayed?
                                  geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
@@ -334,7 +333,8 @@ for (j in 1:length(site_list)){
     
   }
   
-  ####This is not working. It is being written over for one site#####
+  
+
   all_plots[[j]] <- plots
 
 }
@@ -345,10 +345,13 @@ for (j in 1:length(site_list)){
 ## Examine plots
 
 ```{r}
+# Too pick certain sites
+site_list
+#then index the site of interest
+all_plots[1] 
 
-
-plots[1:length(all_plots)]
-
+# Opens all plots - This is a lot of plots - you've been warned 
+unlist(all_plots, recursive = FALSE)
 
 ```
 
@@ -375,10 +378,13 @@ summary(wood_lab_pond_lithobates_sylvaticus)
 ## Save plots
 
 ```{r}
-for (i in 1:length(plots)) {
+
+p_list <- as.list(unlist(all_plots, recursive = FALSE))
+
+for (i in 1:length(p_list)) {
   
   ggsave(here("figures", "abundance", "gam_unix_per_species_site", paste(site_list[j], "_", species_list[i], ".jpeg", sep="")),
-         plot = all_plots[[i]])
+         plot = p_list[[i]])
   
 }
 
@@ -387,6 +393,7 @@ for (i in 1:length(plots)) {
 ```
 
 ---------------------------------------------------
+
 #STOP
 
 # Old N-Mix models
