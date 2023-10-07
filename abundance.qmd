@@ -6,6 +6,15 @@ editor: source
 
 any time point through time what is the abundance at each site or in Pennn fit gam 
 
+
+**Mark's comments**
+
+Hey Jake, nice work on this.  A few comments on things we will want to try
+
+1. When fitting the count data we will want to use either a poisson or quasipoisson distribution since we are dealing with count data.  Currently, we are using a gaussian.
+2. We will want to include total survey effort into the model. I think we can just include this as survey duration x the number of observers. I think I correctly included this below, but double check me.
+3. It looks like we are getting artificial fluctuations in abundance because of when we did and did not survey.  Therefore, I think this pipeline will make the most sense if we pool all years into a single year (e.g., consider Spring 2017, Spring 2018, and Spring 2019 just as Spring).  This will allow us to pool data over years and it will hopefully eliminate these spurious fluctuations, allowing us to see any real fluctuations. 
+
 ## Load Packages
 
 ```{r}
@@ -23,6 +32,8 @@ librarian::shelf(tidyverse, RPostgres, DBI, here, lubridate, unmarked, mgcv, vox
 
 ```{r}
 #| output: false
+
+
 tryCatch({
     drv <- dbDriver("Postgres")
     print("Connecting to Database…")
@@ -48,6 +59,8 @@ dbExecute(connection, "set search_path to survey_data")
 
 How do we want to handle day and night surveys?
 
+**Mark here**:  Good question. We may only want to include night surveys to start.  Detection is easier at night for most of the species of interest.
+
 ```{r}
 
 q_c <- "select r.region, s.site, v.date, v.survey_time,
@@ -57,6 +70,17 @@ q_c <- "select r.region, s.site, v.date, v.survey_time,
      join visit v on s.site_id = v.site_id 
      join survey s2 on v.visit_id = s2.visit_id
      join capture c on s2.survey_id = c.survey_id 
+     where r.region = 'pennsylvania'
+     and v.date < '2020-12-31';"
+
+# Mark query with survey effort
+q_c <- "select r.region, s.site, v.date, v.survey_time,
+     s2.detection_type, c.species_capture, s2.duration_minutes, s2.number_observers
+     from region r
+     join site s on r.region_id = s.region_id
+     join visit v on s.site_id = v.site_id
+     join survey s2 on v.visit_id = s2.visit_id
+     join capture c on s2.survey_id = c.survey_id
      where r.region = 'pennsylvania'
      and v.date < '2020-12-31';"
 
@@ -77,6 +101,8 @@ visits_per_site <- raw_visits %>%
   mutate(year = year(date)) %>% 
   group_by(site) %>% 
   summarise(n = n())
+
+visits_per_site
 ```
 
 
@@ -88,9 +114,10 @@ visits_per_site <- raw_visits %>%
 mid_clean_cap <- raw_cap %>% 
   drop_na(species_capture) %>% 
   group_by(site, date, species_capture) %>% 
-  reframe(n = n())
+  reframe(n = n(), duration_minutes = unique(duration_minutes)[1], number_observers=unique(number_observers)[1])
 
-
+mid_clean_cap$total_survey_effort = mid_clean_cap$duration_minutes * mid_clean_cap$number_observers
+survey_effort = data.table(mid_clean_cap)[, .(site, date, duration_minutes, number_observers)] %>% unique()
 ```
 
 ## Populate Site Zeros
@@ -102,9 +129,18 @@ clean_cap <- raw_visits %>%
            species_capture = unique(mid_clean_cap$species_capture),
            fill = list(n = 0))
 
+# Add in survey effort information
+clean_cap = merge(data.table(clean_cap)[, .(date, site, species_capture, n)], 
+                  survey_effort, by=c("date", "site"), all.x=TRUE)
+clean_cap[, "total_effort":=(duration_minutes*number_observers)]
+
+# Set NAs as mean effort for now
+clean_cap$total_effort[is.na(clean_cap$total_effort)] = mean(clean_cap$total_effort, na.rm=TRUE)
 ```
 
 ## Gam Model - all of Penn per species - assumming detection of 1 - We want raw counts on the plot or predicted points?
+
+
 ```{r}
 
 # Create empty objects
