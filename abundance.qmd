@@ -63,16 +63,6 @@ How do we want to handle day and night surveys?
 
 ```{r}
 
-q_c <- "select r.region, s.site, v.date, v.survey_time,
-     s2.detection_type, c.species_capture
-     from region r
-     join site s on r.region_id = s.region_id 
-     join visit v on s.site_id = v.site_id 
-     join survey s2 on v.visit_id = s2.visit_id
-     join capture c on s2.survey_id = c.survey_id 
-     where r.region = 'pennsylvania'
-     and v.date < '2020-12-31';"
-
 # Mark query with survey effort
 q_c <- "select r.region, s.site, v.date, v.survey_time,
      s2.detection_type, c.species_capture, s2.duration_minutes, s2.number_observers
@@ -102,7 +92,7 @@ visits_per_site <- raw_visits %>%
   group_by(site) %>% 
   summarise(n = n())
 
-visits_per_site
+
 ```
 
 
@@ -114,7 +104,9 @@ visits_per_site
 mid_clean_cap <- raw_cap %>% 
   drop_na(species_capture) %>% 
   group_by(site, date, species_capture) %>% 
-  reframe(n = n(), duration_minutes = unique(duration_minutes)[1], number_observers=unique(number_observers)[1])
+  reframe(n = n(), 
+          duration_minutes = unique(duration_minutes)[1], 
+          number_observers=unique(number_observers)[1])
 
 mid_clean_cap$total_survey_effort = mid_clean_cap$duration_minutes * mid_clean_cap$number_observers
 survey_effort = data.table(mid_clean_cap)[, .(site, date, duration_minutes, number_observers)] %>% unique()
@@ -134,9 +126,10 @@ clean_cap = merge(data.table(clean_cap)[, .(date, site, species_capture, n)],
                   survey_effort, by=c("date", "site"), all.x=TRUE)
 clean_cap[, "total_effort":=(duration_minutes*number_observers)]
 
-# Set NAs as mean effort for now
+# Set NAs as mean effort for nowcontin
 clean_cap$total_effort[is.na(clean_cap$total_effort)] = mean(clean_cap$total_effort, na.rm=TRUE)
 ```
+
 
 ## Gam Model - all of Penn per species - assumming detection of 1 - We want raw counts on the plot or predicted points?
 
@@ -156,58 +149,56 @@ for (i in 1:length(species_list)) {
   # find species with low k value
   k <- clean_cap %>% 
     filter(species_capture == species_list[i]) %>%
-    mutate(year_month = as_date(date, format = "%Y-%m"),
-           year_month = as.numeric(as.POSIXct(year_month, format = "%Y-%m")),
-           year_month = sort(year_month)) %>%  
-    select(year_month) %>% 
+    mutate(month = month(date)) %>% 
+    select(month) %>% 
     unique() %>% 
     nrow()
   
-  # only run models for species with k>8
-  if (k > 9) {
+  # only run models for species with k>3
+  if (k > 3) {
   
       # add filter species list with k>8   
       #spec_names[i] <- species_list[i]
       
       # filter clean data set for species list of k>8
       dat <- clean_cap %>% 
-        select(species_capture, date, n) %>% 
+        select(species_capture, date, n, total_effort) %>% 
         filter(species_capture == species_list[i]) %>%  
+        mutate(month = month(date)) %>% 
         ungroup() %>% 
-        select(!species_capture) %>% 
-        mutate(unix = as_date(date, format = "%Y-%m"),
-               unix = as.numeric(as.POSIXct(unix, format = "%Y-%m")),
-               unix = sort(unix)) 
+        select(!species_capture)
 
   
       # run GAM per species
-      gam <- gam(n ~ s(unix, k = k), data = dat) 
+      gam <- gam(n ~ s(month, k = k) + total_effort, data = dat, family = poisson(link = "log")) 
       
       # create new object in environment for each model output per species
       assign(species_list[i], gam) 
       
       # Predictions
-      unix = seq(min(dat$unix), max(dat$unix), len=100)
-      newdata = data.frame(unix=unix)
+      months = seq(min(dat$month), max(dat$month), len=50)
+      total_effort = seq(min(dat$total_effort), max(dat$total_effort), len=50)
+      newdata = data.frame(month=months, total_effort=total_effort)
       gam_pred = predict(gam, newdata=newdata, type="response", se.fit = T)
       newdata$pred = gam_pred$fit
       newdata$upper_se <- gam_pred$fit + (2 * gam_pred$se.fit)
       newdata$lower_se <- gam_pred$fit - (2 * gam_pred$se.fit)
       
       # save predictions
-      write_rds(as.data.frame(newdata), here("outputs", "abundance", "gam_unix_per_species", paste(species_list[i],".rds", sep = "")))
+      write_rds(as.data.frame(newdata), here("outputs", "abundance", "gam_seasonal_per_species", paste(species_list[i],".rds", sep = "")))
       
       
       # Average prevalence for plotting
-      dat = data.table(dat)
-      dat[, c("month", "year"):=.(month(date), year(date))]
-      average_n = dat[, .(av_n=mean(n), mean_unix=mean(unix)), by=.(month, year)] 
-
+      average_abun <- newdata %>% 
+        mutate(month = round(month, digits = 0)) %>% 
+        group_by(month) %>% 
+        reframe(abun = mean(pred))
+      
       # make GAM plot
-      p <- ggplot(newdata) + geom_line(aes(x=unix, y=pred)) +
-                             geom_point(data=dat, aes(x=unix, y=n), size=3, alpha = 0.5) + # raw or predicted counts displayed?
-                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = unix), alpha = 0.2, fill = "blue")+
-                             xlab("Unix") + ylab("Abundance (Perfect Detection)") + theme_classic() +
+      p <- ggplot(newdata) + geom_line(aes(x=month, y=pred)) +
+                             geom_point(data=average_abun, aes(x=month, y=abun), size=3, alpha = 0.5) + # raw or predicted counts displayed?
+                             geom_ribbon(aes(ymin = lower_se, ymax= upper_se, x = month), alpha = 0.2, fill = "blue")+
+                             xlab("Month") + ylab("Abundance (Perfect Detection)") + theme_classic() +
                              coord_cartesian(ylim = c(0, max(newdata$upper_se) + 5)) + ggtitle(species_list[i])
         
         
@@ -265,7 +256,7 @@ summary(lithobates_sylvaticus)
 ```{r}
 for (i in 1:length(plots)) {
   
-  ggsave(here("figures", "abundance", "gam_unix_per_species", paste(species_list[i], ".jpeg", sep="")),
+  ggsave(here("figures", "abundance", "gam_seasonal_per_species", paste(species_list[i], ".jpeg", sep="")),
          plot = plots[[i]])
   
 }
@@ -273,6 +264,9 @@ for (i in 1:length(plots)) {
 
 
 ```
+
+
+----------- STOP ------------------------------------
 
 ## Gam Model - per site per species - assumming detection of 1 - Nested for loop
 ```{r}
